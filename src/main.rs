@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use actix_web::{web as aweb, App, HttpServer};
 use tokio::sync::broadcast;
 
-use scheduler::default_schedule;
+use scheduler::complete_schedule;
 use state::AppState;
 use web::WebData;
 
@@ -37,7 +37,7 @@ async fn main() -> std::io::Result<()> {
         std::thread::Builder::new()
             .name("dmx-engine".into())
             .spawn(move || {
-                engine::run(state_clone, Some(default_schedule()));
+                engine::run(state_clone, Some(complete_schedule()));
             })
             .expect("failed to spawn DMX engine thread");
     }
@@ -53,8 +53,8 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web_data.clone())
             .route("/", aweb::get().to(web::index))
-            .route("/static/style.css", aweb::get().to(web::style_css))
-            .route("/static/app.js",    aweb::get().to(web::app_js))
+            .route("/style.css", aweb::get().to(web::style_css))
+            .route("/app.js",    aweb::get().to(web::app_js))
             .route("/ws",               aweb::get().to(web::websocket))
     })
     .bind(BIND_ADDR)?

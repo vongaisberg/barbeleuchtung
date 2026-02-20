@@ -9,7 +9,7 @@ use crate::fixture::{render_fixture, UniverseBuffer};
 use crate::fixtures;
 use crate::scheduler::Scheduler;
 use crate::state::AppState;
-use crate::theme::{all_themes, Binding};
+use crate::theme::{all_fx_themes, all_themes, Binding};
 
 /// Target tick rate in Hz.
 pub const TICK_RATE_HZ: u64 = 40;
@@ -17,7 +17,7 @@ const TICK_DURATION: Duration = Duration::from_micros(1_000_000 / TICK_RATE_HZ);
 
 /// Number of Art-Net universes to maintain buffers for.
 /// Must be larger than the highest universe index used in fixtures.rs.
-pub const NUM_UNIVERSES: usize = 16;
+pub const NUM_UNIVERSES: usize = 10;
 
 /// Run the engine loop forever in the calling thread.
 ///
@@ -64,22 +64,24 @@ pub fn run(state: Arc<Mutex<AppState>>, scheduler: Option<Scheduler>) {
         };
 
         // --- Read & advance shared state (lock held as briefly as possible) ---
-        let (active_id, crossfade_snapshot, fader_values, blackout) = {
+        let (active_id, crossfade_snapshot, active_fx_id, fx_crossfade_snapshot, fader_values, blackout) = {
             let mut s = state.lock().unwrap();
 
             // Advance crossfade (marks it complete when done).
             s.tick_crossfade();
 
-            // Run time-of-day scheduler.
+            // Run time-of-day ^ler.
             if let Some(sched) = &scheduler {
                 sched.tick(prev_wall, wall, &mut s);
             }
 
             let cf = s.crossfade.clone();
+            let fx_cf = s.fx_crossfade.clone();
             let faders = s.fader_values.clone();
             let bo = s.blackout;
             let id = s.active_theme_id;
-            (id, cf, faders, bo)
+            let fx_id = s.active_fx_theme_id;
+            (id, cf, fx_id, fx_cf, faders, bo)
         };
 
         // --- Zero all universe buffers each tick ---
@@ -88,8 +90,8 @@ pub fn run(state: Arc<Mutex<AppState>>, scheduler: Option<Scheduler>) {
         }
 
         if !blackout {
+            // --- Decke bank ---
             if let Some(cf) = crossfade_snapshot {
-                // During a crossfade: evaluate both themes and blend.
                 let blend = cf.factor();
                 let from_themes = all_themes();
                 let to_themes = all_themes();
@@ -101,11 +103,30 @@ pub fn run(state: Arc<Mutex<AppState>>, scheduler: Option<Scheduler>) {
                     render_theme_into(&to_theme.bindings, &ctx, &mut universe_buffers, blend);
                 }
             } else {
-                // Normal: evaluate the active theme only.
                 let mut themes = all_themes();
                 if active_id < themes.len() {
                     let theme = themes.swap_remove(active_id);
                     render_theme_into(&theme.bindings, &ctx, &mut universe_buffers, 1.0);
+                }
+            }
+
+            // --- FX bank ---
+            if let Some(cf) = fx_crossfade_snapshot {
+                let blend = cf.factor();
+                let from_themes = all_fx_themes();
+                let to_themes = all_fx_themes();
+
+                if let Some(from_theme) = from_themes.into_iter().nth(cf.from_theme_id) {
+                    render_theme_into(&from_theme.bindings, &ctx, &mut universe_buffers, 1.0 - blend);
+                }
+                if let Some(to_theme) = to_themes.into_iter().nth(cf.to_theme_id) {
+                    render_theme_into(&to_theme.bindings, &ctx, &mut universe_buffers, blend);
+                }
+            } else {
+                let mut fx_themes = all_fx_themes();
+                if active_fx_id < fx_themes.len() {
+                    let fx_theme = fx_themes.swap_remove(active_fx_id);
+                    render_theme_into(&fx_theme.bindings, &ctx, &mut universe_buffers, 1.0);
                 }
             }
 

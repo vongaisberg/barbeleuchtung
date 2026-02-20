@@ -7,6 +7,11 @@ pub mod cheshire_moon;
 pub mod closed;
 pub mod golden_afternoon;
 pub mod mad_hatter;
+pub mod police;
+pub mod fx_off;
+pub mod fx_looking_glass;
+pub mod fx_cheshire_grin;
+pub mod fx_white_rabbit;
 
 use crate::theme::Theme;
 
@@ -70,6 +75,15 @@ impl Rgbw {
         buf.push(self.b);
         buf.push(self.w);
     }
+
+    pub fn add(self, other: Self) -> Self {
+        Self {
+            r: self.r + other.r,
+            g: self.g + other.g,
+            b: self.b + other.b,
+            w: self.w + other.w,
+        }
+    }
 }
 
 // ─── Shared LFO helpers ───────────────────────────────────────────────────
@@ -119,14 +133,15 @@ pub(crate) fn uniform_ceiling(color: Rgbw) -> Vec<f32> {
     build_ceiling(|_| color)
 }
 
-// ─── Theme registry ───────────────────────────────────────────────────────
+// ─── Decke theme registry ─────────────────────────────────────────────────
 
 pub fn all_themes() -> Vec<Theme> {
     vec![
-        mad_hatter::theme(),      // 0 – 11:00–17:00
+        mad_hatter::theme(),       // 0 – 11:00–17:00
         golden_afternoon::theme(), // 1 – 17:00–19:00
-        cheshire_moon::theme(),   // 2 – 19:00–close
-        closed::theme(),          // 3 – 02:00 onward
+        cheshire_moon::theme(),    // 2 – 19:00–close
+        closed::theme(),           // 3 – 02:00 onward
+        police::theme(),           // 4 – manual override
     ]
 }
 
@@ -136,5 +151,26 @@ pub fn theme_names() -> Vec<&'static str> {
         golden_afternoon::NAME,
         cheshire_moon::NAME,
         closed::NAME,
+        police::NAME,
+    ]
+}
+
+// ─── FX theme registry ────────────────────────────────────────────────────
+
+pub fn all_fx_themes() -> Vec<Theme> {
+    vec![
+        fx_off::theme(),             // 0 – all FX fixtures dark
+        fx_looking_glass::theme(),   // 1 – daytime: glinting gems + amber pars
+        fx_cheshire_grin::theme(),     // 2 – evening: cheshire grin + vortex beams
+        fx_white_rabbit::theme(),    // 3 – late night: digital rain + chaos beams
+    ]
+}
+
+pub fn fx_theme_names() -> Vec<&'static str> {
+    vec![
+        fx_off::NAME,
+        fx_looking_glass::NAME,
+        fx_cheshire_grin::NAME,
+        fx_white_rabbit::NAME,
     ]
 }

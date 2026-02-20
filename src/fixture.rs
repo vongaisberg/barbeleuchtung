@@ -3,9 +3,14 @@
 pub enum ChannelWidth {
     /// One DMX slot: `value * 255.0` rounded to u8.
     Bit8,
-    /// Two consecutive DMX slots (coarse, fine):
+    /// Two consecutive DMX slots (coarse, fine), linear mapping:
     /// coarse = `(v * 65535) as u16 >> 8`, fine = `(v * 65535) as u16 & 0xFF`.
     Bit16,
+    /// Two consecutive DMX slots with γ = 2.2 dimmer curve applied before
+    /// encoding.  Input [0, 1] is treated as perceptual intensity; the curve
+    /// expands the dark end of the range so that equal-step fades feel uniform
+    /// to the human eye.  Use this for LED fixtures with linear DMX response.
+    Bit16Gamma,
 }
 
 /// A single logical output channel within a fixture's DMX footprint.
@@ -27,6 +32,13 @@ impl FixtureChannel {
     pub const fn new16(dmx_offset: u16) -> Self {
         Self {
             width: ChannelWidth::Bit16,
+            dmx_offset,
+        }
+    }
+
+    pub const fn new16g(dmx_offset: u16) -> Self {
+        Self {
+            width: ChannelWidth::Bit16Gamma,
             dmx_offset,
         }
     }
@@ -91,6 +103,19 @@ pub fn render_fixture(fixture: &Fixture, values: &[f32], buf: &mut UniverseBuffe
                 let coarse_idx = base as usize;
                 let fine_idx = coarse_idx + 1;
                 let raw = (clamped * 65535.0).round() as u16;
+                let coarse = (raw >> 8) as u8;
+                let fine = (raw & 0xFF) as u8;
+                if coarse_idx < 512 {
+                    buf[coarse_idx] = coarse;
+                }
+                if fine_idx < 512 {
+                    buf[fine_idx] = fine;
+                }
+            }
+            ChannelWidth::Bit16Gamma => {
+                let coarse_idx = base as usize;
+                let fine_idx = coarse_idx + 1;
+                let raw = (clamped.powf(2.0) * 65535.0).round() as u16;
                 let coarse = (raw >> 8) as u8;
                 let fine = (raw & 0xFF) as u8;
                 if coarse_idx < 512 {

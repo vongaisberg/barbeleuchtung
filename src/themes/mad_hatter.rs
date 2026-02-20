@@ -27,21 +27,22 @@ pub const NAME: &str = "Mad Hatter's Workspace";
 
 // ─── Colour constants ─────────────────────────────────────────────────────
 
-/// Warm white recipe for ≈ 2700 K on a RGBW fixture.
-/// The spec explicitly forbids green and blue here – pure W + small red only.
-/// W dominates for high CRI; the red nudge shifts the white point warmer.
-const WARM_WHITE_2700K: Rgbw = Rgbw::new(0.15, 0.0, 0.0, 1.0);
+/// Base white for the ceiling.
+const BASE_WHITE: Rgbw = Rgbw::new(0.0, 0.0, 0.0, 1.0);
+
+/// Highlite white for the ceiling.
+const WHITE: Rgbw = Rgbw::new(0.4, 0.4, 0.5, 0.0);
 
 /// Bar ceiling intensity.  80 % keeps the counter bright without being harsh.
 const BAR_INTENSITY: f32 = 0.80;
 
 /// Lounge intensity range for the sunlight flicker [min, max].
-const LOUNGE_LO: f32 = 0.70;
-const LOUNGE_HI: f32 = 0.85;
+const LOUNGE_LO: f32 = 0.25;
+const LOUNGE_HI: f32 = 1.0;
 
 /// Primary LFO frequency: ≈ 17-second period.
 /// Slow enough to be subliminal, fast enough to feel alive.
-const FREQ_A: f64 = 0.059;
+const FREQ_A: f64 = 0.059*5.0;
 
 // ─── "Sunlight Through Trees" effect ─────────────────────────────────────
 
@@ -64,7 +65,7 @@ impl Effect for SunlightThroughTrees {
         build_ceiling(|spot| {
             // organic_lfo ∈ [-1, 1]; mapped to [LOUNGE_LO, LOUNGE_HI].
             let intensity = mid + organic_lfo(ctx.time, spot, FREQ_A) * half;
-            WARM_WHITE_2700K.scale(intensity)
+            WHITE.scale(intensity).add(BASE_WHITE)
         })
     }
 }
@@ -79,7 +80,7 @@ pub fn theme() -> Theme {
             // Bar ceiling: static warm white – no theatrics, just good light.
             Binding::single(
                 &fixtures::BAR_DECKE,
-                Constant::new(uniform_ceiling(WARM_WHITE_2700K.scale(BAR_INTENSITY))),
+                Constant::new(uniform_ceiling(WHITE.scale(BAR_INTENSITY))),
             ),
             // Lounge ceiling: "Sunlight Through Trees".
             Binding::single(&fixtures::LOUNGE_DECKE, SunlightThroughTrees),

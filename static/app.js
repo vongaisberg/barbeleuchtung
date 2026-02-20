@@ -13,8 +13,15 @@ let reconnectTimer = null;
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url   = `${proto}://${location.host}/ws`;
-  ws          = new WebSocket(url);
+  // Use relative path so it works when reverse proxied behind /licht
+  // Ensure path always ends with /ws regardless of trailing slash
+  let path = location.pathname;
+  if (!path.endsWith('/')) {
+    path += '/';
+  }
+  path += 'ws';
+  const url = `${proto}://${location.host}${path}`;
+  ws = new WebSocket(url);
 
   ws.addEventListener('open', () => {
     setStatus('Connected', 'connected');
@@ -54,19 +61,28 @@ function send(obj) {
 // State application
 // ---------------------------------------------------------------------------
 
-let currentTheme   = 0;
+let currentTheme    = 0;
+let currentFxTheme  = 0;
 let currentBlackout = false;
 
 function applyState(state) {
   // Build theme buttons if not yet created.
   if (state.theme_names) buildThemeButtons(state.theme_names);
+  // Build FX theme buttons if not yet created.
+  if (state.fx_theme_names) buildFxThemeButtons(state.fx_theme_names);
   // Build faders if not yet created.
   if (state.fader_labels) buildFaders(state.fader_labels, state.faders);
 
-  // Update active theme highlight.
+  // Update active Decke theme highlight.
   currentTheme = state.theme;
-  document.querySelectorAll('.theme-btn').forEach((btn, i) => {
+  document.querySelectorAll('#theme-grid .theme-btn').forEach((btn, i) => {
     btn.classList.toggle('active', i === currentTheme);
+  });
+
+  // Update active FX theme highlight.
+  currentFxTheme = state.fx_theme;
+  document.querySelectorAll('#fx-theme-grid .theme-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === currentFxTheme);
   });
 
   // Update fader values (without re-triggering input events).
@@ -101,6 +117,23 @@ function buildThemeButtons(names) {
     btn.textContent = name;
     btn.addEventListener('click', () => {
       send({ type: 'theme', id: i });
+    });
+    grid.appendChild(btn);
+  });
+}
+
+let fxThemesBuilt = false;
+function buildFxThemeButtons(names) {
+  if (fxThemesBuilt) return;
+  fxThemesBuilt = true;
+  const grid = document.getElementById('fx-theme-grid');
+  grid.innerHTML = '';
+  names.forEach((name, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'theme-btn';
+    btn.textContent = name;
+    btn.addEventListener('click', () => {
+      send({ type: 'fx_theme', id: i });
     });
     grid.appendChild(btn);
   });

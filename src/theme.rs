@@ -90,3 +90,13 @@ pub fn all_themes() -> Vec<Theme> {
 pub fn theme_names() -> Vec<&'static str> {
     crate::themes::theme_names()
 }
+
+/// All FX bank themes, in the order their IDs are assigned.
+pub fn all_fx_themes() -> Vec<Theme> {
+    crate::themes::all_fx_themes()
+}
+
+/// Display names for the FX bank (same order as `all_fx_themes()`).
+pub fn fx_theme_names() -> Vec<&'static str> {
+    crate::themes::fx_theme_names()
+}

@@ -1,13 +1,15 @@
 use chrono::NaiveTime;
 
 use crate::state::AppState;
-use crate::theme::all_themes;
+use crate::theme::{all_fx_themes, all_themes};
 
 /// A single time-of-day schedule entry: at `time` activate `theme_id`.
 #[derive(Clone, Debug)]
 pub struct ScheduleEntry {
     pub time: NaiveTime,
-    pub theme_id: usize,
+    pub theme_id: Option<usize>,
+    pub fx_theme_id: Option<usize>,
+    pub fader_values: Option<Vec<f32>>,
 }
 
 /// Checks whether any schedule entry has been crossed since the last tick and,
@@ -29,13 +31,16 @@ impl Scheduler {
     }
 
     /// Create a scheduler from a slice of `(HH, MM, SS, theme_id)` tuples.
+    /// Legacy method for backward compatibility.
     pub fn from_tuples(entries: &[(u32, u32, u32, usize)]) -> Self {
         let entries = entries
             .iter()
             .map(|&(h, m, s, id)| ScheduleEntry {
                 time: NaiveTime::from_hms_opt(h, m, s)
                     .expect("invalid time in scheduler"),
-                theme_id: id,
+                theme_id: Some(id),
+                fx_theme_id: None,
+                fader_values: None,
             })
             .collect();
         Self::new(entries)
@@ -57,33 +62,118 @@ impl Scheduler {
             };
 
             if crossed {
-                let themes = all_themes();
-                let duration_ms = themes.get(entry.theme_id).and_then(|t| {
-                    match t.transition {
-                        crate::theme::Transition::Crossfade { duration_ms } => Some(duration_ms),
-                        _ => None,
+                // Handle regular theme change
+                if let Some(theme_id) = entry.theme_id {
+                    let themes = all_themes();
+                    let duration_ms = themes.get(theme_id).and_then(|t| {
+                        match t.transition {
+                            crate::theme::Transition::Crossfade { duration_ms } => Some(duration_ms),
+                            _ => None,
+                        }
+                    });
+                    state.request_theme(theme_id, duration_ms);
+                    log::info!(
+                        "Scheduler: switched to theme {} at {:?}",
+                        theme_id,
+                        current
+                    );
+                }
+
+                // Handle FX theme change
+                if let Some(fx_theme_id) = entry.fx_theme_id {
+                    let fx_themes = all_fx_themes();
+                    let duration_ms = fx_themes.get(fx_theme_id).and_then(|t| {
+                        match t.transition {
+                            crate::theme::Transition::Crossfade { duration_ms } => Some(duration_ms),
+                            _ => None,
+                        }
+                    });
+                    state.request_fx_theme(fx_theme_id, duration_ms);
+                    log::info!(
+                        "Scheduler: switched to FX theme {} at {:?}",
+                        fx_theme_id,
+                        current
+                    );
+                }
+
+                // Handle fader values
+                if let Some(ref fader_vals) = entry.fader_values {
+                    if fader_vals.len() == state.fader_values.len() {
+                        state.fader_values = fader_vals.clone();
+                        log::info!(
+                            "Scheduler: updated fader values at {:?}",
+                            current
+                        );
+                    } else {
+                        log::warn!(
+                            "Scheduler: fader values length mismatch (expected {}, got {})",
+                            state.fader_values.len(),
+                            fader_vals.len()
+                        );
                     }
-                });
-                state.request_theme(entry.theme_id, duration_ms);
-                log::info!(
-                    "Scheduler: switched to theme {} at {:?}",
-                    entry.theme_id,
-                    current
-                );
+                }
             }
         }
     }
 }
 
-/// Default schedule for the bar. Edit to match opening hours.
+/// Complete schedule for the bar. All schedule entries defined in one place.
+///
 /// Theme IDs match the order in `themes::all_themes()`:
 ///   0 = Mad Hatter's Workspace, 1 = Golden Afternoon,
 ///   2 = Cheshire Moon,          3 = Closed
-pub fn default_schedule() -> Scheduler {
-    Scheduler::from_tuples(&[
-        (7, 0, 0, 0), // 08:00 – open, Mad Hatter daytime
-        (17, 0, 0, 1), // 17:00 – Golden Afternoon transition
-        (10, 0, 0, 2), // 19:00 – Cheshire Moon evening
-       // ( 2, 0, 0, 3), // 02:00 – Closed, gentle fade to black
-    ])
+///
+/// FX theme IDs match the order in `themes::all_fx_themes()`:
+///   0 = fx_off, 1 = fx_looking_glass, 2 = fx_cheshire_grin, 3 = fx_white_rabbit
+pub fn complete_schedule() -> Scheduler {
+    use crate::fixtures;
+    
+    // Fans on: all three fans (indices 2, 3, 4) set to 1.0
+    let fans_on = {
+        let mut vals = vec![0.0; fixtures::FADER_FIXTURES.len()];
+        vals[2] = 1.0; // FAN_ZULUFT
+        vals[3] = 1.0; // FAN_GANG
+        vals[4] = 1.0; // FAN_BAR
+        vals
+    };
+    
+    // Fans off: all fans set to 0.0
+    let fans_off = vec![0.0; fixtures::FADER_FIXTURES.len()];
+    
+    let mut entries = vec![
+        // 07:00 – Open, Mad Hatter daytime, FX off, fans off
+        ScheduleEntry {
+            time: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
+            theme_id: Some(0), // Mad Hatter's Workspace
+            fx_theme_id: Some(0), // fx_off
+            fader_values: Some(fans_off.clone()),
+        },
+        // 17:00 – Golden Afternoon transition, The Looking Glass starts
+        ScheduleEntry {
+            time: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            theme_id: Some(1), // Golden Afternoon
+            fx_theme_id: Some(1), // fx_looking_glass
+            fader_values: None,
+        },
+        // 21:00 – Cheshire Grin starts, fans turn on
+        ScheduleEntry {
+            time: NaiveTime::from_hms_opt(21, 0, 0).unwrap(),
+            theme_id: Some(2), // Keep current theme
+            fx_theme_id: Some(2), // fx_cheshire_grin
+            fader_values: Some(fans_on.clone()),
+        },
+        // 23:00 – White Rabbit starts
+        ScheduleEntry {
+            time: NaiveTime::from_hms_opt(23, 0, 0).unwrap(),
+            theme_id: None, // Keep current theme
+            fx_theme_id: Some(3), // fx_white_rabbit
+            fader_values: None, // Keep fans on
+        },
+
+    ];
+    
+    // Sort entries by time for correct processing order
+    entries.sort_by_key(|e| e.time);
+    
+    Scheduler::new(entries)
 }

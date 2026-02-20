@@ -33,7 +33,7 @@ use crate::effect::{Constant, Effect, TickContext};
 use crate::fixtures;
 use crate::theme::{Binding, Theme, Transition};
 
-use super::{build_ceiling, shaped_lfo, uniform_ceiling, Rgbw};
+use super::{build_ceiling, shaped_lfo, uniform_ceiling, Rgbw, GOLDEN_ANGLE};
 
 pub const NAME: &str = "Cheshire Moon";
 
@@ -47,7 +47,7 @@ const BAR_INTENSITY: f32 = 0.30;
 /// Purple anchor: `RGB(50, 0, 100) / 255` + slight warm white for depth.
 /// The warm white component (4 %) prevents the purple from looking cold and
 /// keeps it in the "warm club" territory rather than "hospital UV lamp".
-const PURPLE: Rgbw = Rgbw::new(0.196, 0.0, 0.392, 0.04);
+const PURPLE: Rgbw = Rgbw::new(0.333, 0.0, 0.666, 0.04);
 
 /// Teal visitor: saturated cyan-teal.  Against the purple background this
 /// creates a complementary contrast that makes the wall murals dance.
@@ -62,6 +62,53 @@ const RABBIT_HOLE_PERIOD_S: f64 = 28.0;
 /// Shape factor k in `tanh(k · sin(...))`.
 /// k = 3 → ≈ 4 s transition, ≈ 10 s hold per extreme.
 const RABBIT_HOLE_K: f64 = 3.0;
+
+// ─── Glint parameters ─────────────────────────────────────────────────────
+
+/// Full-white target for the sparkle peak.
+const GLINT_WHITE: Rgbw = Rgbw::new(1.0, 1.0, 1.0, 1.0);
+
+/// Each spot glints once every 120 s.
+const GLINT_PERIOD_S: f64 = 60.0*10.0;
+
+/// Linear ramp duration (seconds): 0 → 100 %.
+const GLINT_RISE_S: f64 = 0.5;
+
+/// Seconds after the rise at which the exponential tail ends (≈ zero).
+/// Total visible glint window: GLINT_RISE_S + GLINT_DECAY_S = 4 s.
+const GLINT_DECAY_S: f64 = 5.0;
+
+/// Exponent k in e^{−k·t}: k = 3 → e^{−9} ≈ 0.0001 at t = 3 s.
+const GLINT_K: f64 = 2.0;
+
+// ─── Glint envelope ───────────────────────────────────────────────────────
+
+/// Sparkle amplitude ∈ [0, 1] for `spot` at time `t`.
+///
+/// Once every `GLINT_PERIOD_S` seconds, with golden-angle phase offsets so no
+/// two spots fire simultaneously:
+///
+/// ```text
+/// 1 ┤  /\
+///   | /  \_____
+///   |/         ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾ (≈ 0)
+///   +---+---+---+---- 120 s ────→
+///   0   1   4
+///        rise decay     silent
+/// ```
+fn glint_envelope(t: f64, spot: usize) -> f32 {
+    let offset = (spot as f64 * GOLDEN_ANGLE / std::f64::consts::TAU) * GLINT_PERIOD_S;
+    let t_local = (t + offset).rem_euclid(GLINT_PERIOD_S);
+
+    if t_local < GLINT_RISE_S {
+        (t_local / GLINT_RISE_S) as f32
+    } else if t_local < GLINT_RISE_S + GLINT_DECAY_S {
+        let t_decay = t_local - GLINT_RISE_S;
+        (-GLINT_K * t_decay).exp() as f32
+    } else {
+        0.0
+    }
+}
 
 // ─── "The Rabbit Hole" effect ─────────────────────────────────────────────
 
@@ -83,7 +130,10 @@ impl Effect for RabbitHole {
         build_ceiling(|spot| {
             // shaped_lfo → 0.0 = purple extreme, 1.0 = teal extreme.
             let teal_ness = shaped_lfo(ctx.time, spot, RABBIT_HOLE_PERIOD_S, RABBIT_HOLE_K);
-            PURPLE.lerp(TEAL, teal_ness)
+            let base = PURPLE.lerp(TEAL, teal_ness);
+            // Overlay the glint: lerp toward full white at the sparkle peak.
+            let glint = glint_envelope(ctx.time, spot);
+            base.lerp(GLINT_WHITE, glint)
         })
     }
 }

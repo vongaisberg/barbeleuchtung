@@ -7,7 +7,7 @@ use tokio::sync::broadcast;
 
 use crate::fixtures;
 use crate::state::AppState;
-use crate::theme::{all_themes, theme_names, Transition};
+use crate::theme::{all_fx_themes, all_themes, fx_theme_names, theme_names, Transition};
 
 // ---------------------------------------------------------------------------
 // Broadcast channel – lets the server push state updates to all connected
@@ -20,9 +20,11 @@ pub struct StateSnapshot {
     #[serde(rename = "type")]
     msg_type: &'static str,
     theme: usize,
+    fx_theme: usize,
     faders: Vec<f32>,
     blackout: bool,
     theme_names: Vec<&'static str>,
+    fx_theme_names: Vec<&'static str>,
     fader_labels: Vec<&'static str>,
 }
 
@@ -36,12 +38,19 @@ impl StateSnapshot {
             .as_ref()
             .map(|cf| cf.to_theme_id)
             .unwrap_or(state.active_theme_id);
+        let fx_theme = state
+            .fx_crossfade
+            .as_ref()
+            .map(|cf| cf.to_theme_id)
+            .unwrap_or(state.active_fx_theme_id);
         Self {
             msg_type: "state",
             theme,
+            fx_theme,
             faders: state.fader_values.clone(),
             blackout: state.blackout,
             theme_names: theme_names(),
+            fx_theme_names: fx_theme_names(),
             fader_labels: fixtures::FADER_LABELS.to_vec(),
         }
     }
@@ -52,6 +61,7 @@ impl StateSnapshot {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ClientMessage {
     Theme { id: usize },
+    FxTheme { id: usize },
     Fader { id: usize, value: f32 },
     Blackout { active: bool },
 }
@@ -171,6 +181,19 @@ fn handle_client_message(
                 log::info!("Theme changed to {id}");
             } else {
                 log::warn!("Unknown theme id {id}");
+            }
+        }
+        ClientMessage::FxTheme { id } => {
+            let fx_themes = all_fx_themes();
+            if id < fx_themes.len() {
+                let duration_ms = match fx_themes[id].transition {
+                    Transition::Crossfade { duration_ms } => Some(duration_ms),
+                    Transition::Instant => None,
+                };
+                s.request_fx_theme(id, duration_ms);
+                log::info!("FX theme changed to {id}");
+            } else {
+                log::warn!("Unknown FX theme id {id}");
             }
         }
         ClientMessage::Fader { id, value } => {

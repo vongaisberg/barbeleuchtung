@@ -36,11 +36,11 @@ const WARM_WHITE: Rgbw = Rgbw::new(0.15, 0.0, 0.0, 1.0);
 const GOLD_AMBER: Rgbw = Rgbw::new(1.0, 0.35, 0.0, 0.20);
 
 /// Overall intensity for this phase: 55 % (mid-range of 50–60 %).
-const INTENSITY: f32 = 0.55;
+const INTENSITY: f32 = 0.8;
 
 /// Tea-Party tide period in seconds.  Two minutes is slow enough to be
 /// felt rather than noticed – perfect for an unconscious mood transition.
-const TIDE_PERIOD_S: f64 = 120.0;
+const TIDE_PERIOD_S: f64 = 12.0;
 
 /// The colour mix oscillates between these two fractions of GOLD_AMBER.
 /// At `GOLD_LO` we are almost entirely warm white; at `GOLD_HI` the room

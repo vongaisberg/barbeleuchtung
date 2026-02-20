@@ -172,48 +172,48 @@ pub static FAN_GANG: Fixture = Fixture {
 // Decke
 // ---------------------------------------------------------------------------
 
-// 10xRGBW
+// 10xRGBW – γ=2.2 for perceptually smooth dimming
 static DECKE_CHANNELS: &[FixtureChannel] = &[
-    FixtureChannel::new16(0),  // R 1
-    FixtureChannel::new16(2),  // G 1
-    FixtureChannel::new16(4),  // B 1
-    FixtureChannel::new16(6),  // W 1
-    FixtureChannel::new16(8),  // R 2
-    FixtureChannel::new16(10), // G 2
-    FixtureChannel::new16(12), // B 2
-    FixtureChannel::new16(14), // W 2
-    FixtureChannel::new16(16), // R 3
-    FixtureChannel::new16(18), // G 3
-    FixtureChannel::new16(20), // B 3
-    FixtureChannel::new16(22), // W 3
-    FixtureChannel::new16(24), // R 4
-    FixtureChannel::new16(26), // G 4
-    FixtureChannel::new16(28), // B 4
-    FixtureChannel::new16(30), // W 4
-    FixtureChannel::new16(32), // R 5
-    FixtureChannel::new16(34), // G 5
-    FixtureChannel::new16(36), // B 5
-    FixtureChannel::new16(38), // W 5
-    FixtureChannel::new16(40), // R 6
-    FixtureChannel::new16(42), // G 6
-    FixtureChannel::new16(44), // B 6
-    FixtureChannel::new16(46), // W 6
-    FixtureChannel::new16(48), // R 7
-    FixtureChannel::new16(50), // G 7
-    FixtureChannel::new16(52), // B 7
-    FixtureChannel::new16(54), // W 7
-    FixtureChannel::new16(56), // R 8
-    FixtureChannel::new16(58), // G 8
-    FixtureChannel::new16(60), // B 8
-    FixtureChannel::new16(62), // W 8
-    FixtureChannel::new16(64), // R 9
-    FixtureChannel::new16(66), // G 9
-    FixtureChannel::new16(68), // B 9
-    FixtureChannel::new16(70), // W 9
-    FixtureChannel::new16(72), // R 10
-    FixtureChannel::new16(74), // G 10
-    FixtureChannel::new16(76), // B 10
-    FixtureChannel::new16(78), // W 10
+    FixtureChannel::new16g(0),  // R 1
+    FixtureChannel::new16g(2),  // G 1
+    FixtureChannel::new16g(4),  // B 1
+    FixtureChannel::new16g(6),  // W 1
+    FixtureChannel::new16g(8),  // R 2
+    FixtureChannel::new16g(10), // G 2
+    FixtureChannel::new16g(12), // B 2
+    FixtureChannel::new16g(14), // W 2
+    FixtureChannel::new16g(16), // R 3
+    FixtureChannel::new16g(18), // G 3
+    FixtureChannel::new16g(20), // B 3
+    FixtureChannel::new16g(22), // W 3
+    FixtureChannel::new16g(24), // R 4
+    FixtureChannel::new16g(26), // G 4
+    FixtureChannel::new16g(28), // B 4
+    FixtureChannel::new16g(30), // W 4
+    FixtureChannel::new16g(32), // R 5
+    FixtureChannel::new16g(34), // G 5
+    FixtureChannel::new16g(36), // B 5
+    FixtureChannel::new16g(38), // W 5
+    FixtureChannel::new16g(40), // R 6
+    FixtureChannel::new16g(42), // G 6
+    FixtureChannel::new16g(44), // B 6
+    FixtureChannel::new16g(46), // W 6
+    FixtureChannel::new16g(48), // R 7
+    FixtureChannel::new16g(50), // G 7
+    FixtureChannel::new16g(52), // B 7
+    FixtureChannel::new16g(54), // W 7
+    FixtureChannel::new16g(56), // R 8
+    FixtureChannel::new16g(58), // G 8
+    FixtureChannel::new16g(60), // B 8
+    FixtureChannel::new16g(62), // W 8
+    FixtureChannel::new16g(64), // R 9
+    FixtureChannel::new16g(66), // G 9
+    FixtureChannel::new16g(68), // B 9
+    FixtureChannel::new16g(70), // W 9
+    FixtureChannel::new16g(72), // R 10
+    FixtureChannel::new16g(74), // G 10
+    FixtureChannel::new16g(76), // B 10
+    FixtureChannel::new16g(78), // W 10
 ];
 pub static LOUNGE_DECKE: Fixture = Fixture {
     name: "Lounge",
@@ -223,7 +223,7 @@ pub static LOUNGE_DECKE: Fixture = Fixture {
 };
 pub static BAR_DECKE: Fixture = Fixture {
     name: "Bar",
-    universe: 14,
+    universe: 10,
     start_address: 1,
     channels: DECKE_CHANNELS,
 };

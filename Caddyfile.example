@@ -1,0 +1,69 @@
+# Caddyfile configuration for serving barbeleuchtung under /licht
+#
+# The backend runs on localhost:8080 (adjust if running in Docker or different port)
+# Replace `your-domain.com` with your actual domain
+
+your-domain.com {
+    # Handle WebSocket connections - strip /licht prefix and forward to /ws
+    handle /licht/ws {
+        uri strip_prefix /licht
+        reverse_proxy localhost:8080
+    }
+    
+    # Serve barbeleuchtung web interface under /licht
+    # handle_path automatically strips /licht prefix before forwarding
+    handle_path /licht* {
+        reverse_proxy localhost:8080
+    }
+    
+    # Handle other routes (add your other services here)
+    handle {
+        # Example: serve other content or return 404
+        respond "Not Found" 404
+    }
+}
+
+# ============================================================================
+# Alternative configurations:
+# ============================================================================
+
+# Option 1: For local testing without a domain
+# localhost {
+#     handle_path /licht* {
+#         reverse_proxy localhost:8080 {
+#             header_up Connection {>Connection}
+#             header_up Upgrade {>Upgrade}
+#         }
+#     }
+#     
+#     handle {
+#         respond "Not Found" 404
+#     }
+# }
+
+# Option 2: If backend is running in Docker on host network
+# your-domain.com {
+#     handle_path /licht* {
+#         reverse_proxy 127.0.0.1:8080 {
+#             header_up Connection {>Connection}
+#             header_up Upgrade {>Upgrade}
+#         }
+#     }
+#     
+#     handle {
+#         respond "Not Found" 404
+#     }
+# }
+
+# Option 3: Redirect root to /licht
+# your-domain.com {
+#     handle_path /licht* {
+#         reverse_proxy localhost:8080 {
+#             header_up Connection {>Connection}
+#             header_up Upgrade {>Upgrade}
+#         }
+#     }
+#     
+#     # Redirect root to /licht
+#     redir / /licht 301
+# }
