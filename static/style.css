@@ -1,0 +1,287 @@
+/* ============================================================
+   Reset & tokens
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg:           #0a0a0a;
+  --border:       #242424;
+  --border-mid:   #363636;
+  --text:         #ffffff;
+  --text-muted:   #444;
+  --active-bg:    #d8d8d8;
+  --active-text:  #0a0a0a;
+  --blackout-col: #c62828;
+  --blackout-on:  #f44336;
+  --touch-min:    52px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', 'Fira Mono', 'Courier New', monospace;
+  font-size: 18px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+/* ============================================================
+   App shell
+   ============================================================ */
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+@media (min-width: 600px) {
+  header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* ============================================================
+   Blackout button
+   ============================================================ */
+.blackout-btn {
+  min-height: var(--touch-min);
+  width: 100%;
+  padding: 0 24px;
+  border: 2px solid var(--blackout-col);
+  border-radius: 0;
+  background: transparent;
+  color: var(--blackout-col);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s, border-color 0.08s;
+  user-select: none;
+}
+
+.blackout-btn.active {
+  background: var(--blackout-on);
+  color: #fff;
+  border-color: var(--blackout-on);
+}
+
+@media (min-width: 600px) {
+  .blackout-btn {
+    width: auto;
+    min-width: 160px;
+  }
+}
+
+/* ============================================================
+   Sections
+   ============================================================ */
+.section {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+}
+
+.section h2 {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.section h2::before {
+  content: '// ';
+}
+
+/* ============================================================
+   Theme grid
+   ============================================================ */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+@media (min-width: 600px) {
+  .theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
+.theme-btn {
+  min-height: var(--touch-min);
+  padding: 12px 16px;
+  border: 1px solid var(--border-mid);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.07s, color 0.07s, border-color 0.07s;
+  user-select: none;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.theme-btn:active {
+  background: var(--border-mid);
+}
+
+.theme-btn.active {
+  background: var(--active-bg);
+  color: var(--active-text);
+  border-color: var(--active-bg);
+}
+
+/* ============================================================
+   Fader columns (vertical)
+   ============================================================ */
+.fader-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.fader-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 64px;
+  min-width: 56px;
+  max-width: 80px;
+}
+
+.fader-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.fader-value {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.fader-track {
+  width: 64px;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Vertical range slider */
+input.fader-input {
+  -webkit-appearance: none;
+  appearance: none;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 64px;
+  height: 240px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  touch-action: none;
+  padding: 0;
+  margin: 0;
+}
+
+input.fader-input::-webkit-slider-runnable-track {
+  width: 3px;
+  background: var(--border-mid);
+  border-radius: 0;
+}
+
+input.fader-input::-moz-range-track {
+  width: 3px;
+  background: var(--border-mid);
+  border-radius: 0;
+}
+
+/* Large touch-friendly thumb */
+input.fader-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 52px;
+  height: 20px;
+  background: var(--text);
+  border: none;
+  border-radius: 0;
+  margin-left: -24.5px;
+}
+
+input.fader-input::-moz-range-thumb {
+  width: 52px;
+  height: 20px;
+  background: var(--text);
+  border: none;
+  border-radius: 0;
+}
+
+/* ============================================================
+   Status bar
+   ============================================================ */
+.status-bar {
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-bar::before {
+  content: '●';
+  font-size: 0.55rem;
+}
+
+.status-bar.connected    { color: #43a047; }
+.status-bar.disconnected { color: #e53935; }

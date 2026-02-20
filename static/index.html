@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Barbeleuchtung</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Barbeleuchtung</h1>
+      <button id="blackout-btn" class="blackout-btn" aria-label="Blackout">
+        BLACKOUT
+      </button>
+    </header>
+
+    <section class="section">
+      <h2>Scenes</h2>
+      <div id="theme-grid" class="theme-grid">
+        <!-- Theme buttons injected by JS -->
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Faders</h2>
+      <div id="fader-row" class="fader-row">
+        <!-- Faders injected by JS -->
+      </div>
+    </section>
+
+    <div id="status-bar" class="status-bar">Connecting…</div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
