@@ -1,0 +1,8 @@
+services:
+  barbeleuchtung:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Europe/Berlin
+    restart: unless-stopped

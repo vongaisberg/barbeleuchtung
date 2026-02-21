@@ -258,9 +258,9 @@ pub static FADER_FIXTURES: &[&Fixture] = &[
 
 /// Labels shown in the UI for each fader (same order as `FADER_FIXTURES`).
 pub static FADER_LABELS: &[&str] = &[
-    "Arri Links",
-    "Arri Rechts",
+    "Arri 1",
+    "Arri 2",
     "Zuluft",
-    "Abluft Bar",
-    "Abluft Gang",
+    "Bar",
+    "Gang",
 ];
