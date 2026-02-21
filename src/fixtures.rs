@@ -169,6 +169,21 @@ pub static FAN_GANG: Fixture = Fixture {
 };
 
 // ---------------------------------------------------------------------------
+// Fog machine
+// ---------------------------------------------------------------------------
+
+static FOG_CHANNELS: &[FixtureChannel] = &[
+    FixtureChannel::new8(0), // pump level (0 = off, 255 = full)
+];
+
+pub static FOG_MACHINE: Fixture = Fixture {
+    name: "Fog Machine",
+    universe: 0,
+    start_address: 10,
+    channels: FOG_CHANNELS,
+};
+
+// ---------------------------------------------------------------------------
 // Decke
 // ---------------------------------------------------------------------------
 

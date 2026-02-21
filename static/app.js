@@ -64,6 +64,7 @@ function send(obj) {
 let currentTheme    = 0;
 let currentFxTheme  = 0;
 let currentBlackout = false;
+let currentFogEnabled = false;
 
 function applyState(state) {
   // Build theme buttons if not yet created.
@@ -99,6 +100,36 @@ function applyState(state) {
   currentBlackout = state.blackout;
   const bo = document.getElementById('blackout-btn');
   if (bo) bo.classList.toggle('active', currentBlackout);
+
+  // Update fog machine controls (skip while user is dragging a slider).
+  if (state.fog_enabled !== undefined) {
+    currentFogEnabled = state.fog_enabled;
+    const fogBtn = document.getElementById('fog-btn');
+    if (fogBtn) {
+      fogBtn.classList.toggle('active', currentFogEnabled);
+      fogBtn.textContent = currentFogEnabled ? 'FOG: ON' : 'FOG: OFF';
+    }
+    setFogSlider('fog-interval', 'fog-interval-val', state.fog_interval_min,
+                 v => v.toFixed(1) + ' min');
+    setFogSlider('fog-duration',  'fog-duration-val',  state.fog_duration_s,
+                 v => Math.round(v) + ' s');
+    setFogSlider('fog-level',     'fog-level-val',     state.fog_level * 100,
+                 v => Math.round(v) + ' %');
+  }
+}
+
+function setFogSlider(sliderId, labelId, value, fmt) {
+  const slider = document.getElementById(sliderId);
+  const label  = document.getElementById(labelId);
+  if (slider && !slider._dragging) slider.value = value;
+  if (label) label.textContent = fmt(value);
+}
+
+function sendFogSettings() {
+  const interval = parseFloat(document.getElementById('fog-interval').value);
+  const duration = parseFloat(document.getElementById('fog-duration').value);
+  const level    = parseFloat(document.getElementById('fog-level').value) / 100;
+  send({ type: 'fog_settings', interval_min: interval, duration_s: duration, level });
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +228,34 @@ function buildFaders(labels, initialValues) {
 document.getElementById('blackout-btn').addEventListener('click', () => {
   currentBlackout = !currentBlackout;
   send({ type: 'blackout', active: currentBlackout });
+});
+
+// ---------------------------------------------------------------------------
+// Fog machine controls
+// ---------------------------------------------------------------------------
+
+document.getElementById('fog-btn').addEventListener('click', () => {
+  currentFogEnabled = !currentFogEnabled;
+  send({ type: 'fog_enabled', active: currentFogEnabled });
+});
+
+['fog-interval', 'fog-duration', 'fog-level'].forEach(id => {
+  const el = document.getElementById(id);
+  el._dragging = false;
+  el.addEventListener('pointerdown', () => { el._dragging = true; });
+  el.addEventListener('pointerup',   () => { el._dragging = false; });
+  el.addEventListener('input', () => {
+    // Update local label immediately for responsive feel.
+    const val = parseFloat(el.value);
+    const labelId = id + '-val';
+    const label = document.getElementById(labelId);
+    if (label) {
+      if (id === 'fog-interval') label.textContent = val.toFixed(1) + ' min';
+      if (id === 'fog-duration') label.textContent = Math.round(val) + ' s';
+      if (id === 'fog-level')    label.textContent = Math.round(val) + ' %';
+    }
+    sendFogSettings();
+  });
 });
 
 // ---------------------------------------------------------------------------

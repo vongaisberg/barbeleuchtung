@@ -265,6 +265,104 @@ input.fader-input::-moz-range-thumb {
 }
 
 /* ============================================================
+   Fog machine
+   ============================================================ */
+
+.fog-btn {
+  min-height: var(--touch-min);
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border-mid);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.07s, color 0.07s, border-color 0.07s;
+  user-select: none;
+  text-align: center;
+  line-height: 1.3;
+  margin-bottom: 14px;
+}
+
+.fog-btn.active {
+  background: var(--active-bg);
+  color: var(--active-text);
+  border-color: var(--active-bg);
+}
+
+.fog-settings {
+  display: grid;
+  grid-template-columns: max-content 1fr max-content;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.fog-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fog-value {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+  text-align: right;
+  min-width: 52px;
+}
+
+input.fog-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 36px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+
+input.fog-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--border-mid);
+  border-radius: 0;
+}
+
+input.fog-slider::-moz-range-track {
+  height: 3px;
+  background: var(--border-mid);
+  border-radius: 0;
+}
+
+input.fog-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 44px;
+  background: var(--text);
+  border: none;
+  border-radius: 0;
+  margin-top: -20.5px;
+}
+
+input.fog-slider::-moz-range-thumb {
+  width: 20px;
+  height: 44px;
+  background: var(--text);
+  border: none;
+  border-radius: 0;
+}
+
+/* ============================================================
    Status bar
    ============================================================ */
 .status-bar {

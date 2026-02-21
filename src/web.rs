@@ -26,6 +26,10 @@ pub struct StateSnapshot {
     theme_names: Vec<&'static str>,
     fx_theme_names: Vec<&'static str>,
     fader_labels: Vec<&'static str>,
+    fog_enabled: bool,
+    fog_interval_min: f32,
+    fog_duration_s: f32,
+    fog_level: f32,
 }
 
 impl StateSnapshot {
@@ -52,6 +56,10 @@ impl StateSnapshot {
             theme_names: theme_names(),
             fx_theme_names: fx_theme_names(),
             fader_labels: fixtures::FADER_LABELS.to_vec(),
+            fog_enabled: state.fog_enabled,
+            fog_interval_min: state.fog_interval_min,
+            fog_duration_s: state.fog_duration_s,
+            fog_level: state.fog_level,
         }
     }
 }
@@ -64,6 +72,8 @@ enum ClientMessage {
     FxTheme { id: usize },
     Fader { id: usize, value: f32 },
     Blackout { active: bool },
+    FogEnabled { active: bool },
+    FogSettings { interval_min: f32, duration_s: f32, level: f32 },
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +214,15 @@ fn handle_client_message(
         ClientMessage::Blackout { active } => {
             s.blackout = active;
             log::info!("Blackout: {active}");
+        }
+        ClientMessage::FogEnabled { active } => {
+            s.fog_enabled = active;
+            log::info!("Fog enabled: {active}");
+        }
+        ClientMessage::FogSettings { interval_min, duration_s, level } => {
+            s.fog_interval_min = interval_min.clamp(1.0, 30.0);
+            s.fog_duration_s   = duration_s.clamp(5.0, 25.0);
+            s.fog_level        = level.clamp(0.20, 0.70);
         }
     }
 

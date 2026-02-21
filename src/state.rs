@@ -42,6 +42,14 @@ pub struct AppState {
     pub fader_values: Vec<f32>,
     /// If true, the engine sends all-zero DMX output regardless of themes.
     pub blackout: bool,
+    /// Fog machine automation enabled.
+    pub fog_enabled: bool,
+    /// Minutes between fog bursts (x).  Range: 1–30.
+    pub fog_interval_min: f32,
+    /// Seconds the pump runs per burst (y).  Range: 1–30.
+    pub fog_duration_s: f32,
+    /// Pump output level (z), in `0.0..=1.0`.  Range: 0.1–1.0.
+    pub fog_level: f32,
 }
 
 impl AppState {
@@ -53,6 +61,10 @@ impl AppState {
             fx_crossfade: None,
             fader_values: vec![0.0; fixtures::FADER_FIXTURES.len()],
             blackout: false,
+            fog_enabled: false,
+            fog_interval_min: 5.0,
+            fog_duration_s: 5.0,
+            fog_level: 0.5,
         }
     }
 

@@ -64,7 +64,8 @@ pub fn run(state: Arc<Mutex<AppState>>, scheduler: Option<Scheduler>) {
         };
 
         // --- Read & advance shared state (lock held as briefly as possible) ---
-        let (active_id, crossfade_snapshot, active_fx_id, fx_crossfade_snapshot, fader_values, blackout) = {
+        let (active_id, crossfade_snapshot, active_fx_id, fx_crossfade_snapshot, fader_values, blackout,
+             fog_enabled, fog_interval_min, fog_duration_s, fog_level) = {
             let mut s = state.lock().unwrap();
 
             // Advance crossfade (marks it complete when done).
@@ -81,7 +82,8 @@ pub fn run(state: Arc<Mutex<AppState>>, scheduler: Option<Scheduler>) {
             let bo = s.blackout;
             let id = s.active_theme_id;
             let fx_id = s.active_fx_theme_id;
-            (id, cf, fx_id, fx_cf, faders, bo)
+            let fog = (s.fog_enabled, s.fog_interval_min, s.fog_duration_s, s.fog_level);
+            (id, cf, fx_id, fx_cf, faders, bo, fog.0, fog.1, fog.2, fog.3)
         };
 
         // --- Zero all universe buffers each tick ---
@@ -138,6 +140,26 @@ pub fn run(state: Arc<Mutex<AppState>>, scheduler: Option<Scheduler>) {
                 if uni < NUM_UNIVERSES {
                     render_fixture(fixture, &values, universe_buffers[uni].as_mut());
                 }
+            }
+
+            // --- Fog machine ---
+            // Fires periodically: every `fog_interval_min` minutes, runs for
+            // `fog_duration_s` seconds at `fog_level`.  Computed purely from
+            // elapsed time – no extra state required.
+            let fog_output = if fog_enabled {
+                let interval_s = fog_interval_min as f64 * 60.0;
+                let t_cycle = elapsed.rem_euclid(interval_s);
+                if t_cycle < fog_duration_s as f64 { fog_level } else { 0.0 }
+            } else {
+                0.0
+            };
+            let fog_uni = fixtures::FOG_MACHINE.universe as usize;
+            if fog_uni < NUM_UNIVERSES {
+                render_fixture(
+                    &fixtures::FOG_MACHINE,
+                    &[fog_output],
+                    universe_buffers[fog_uni].as_mut(),
+                );
             }
         }
 
