@@ -1,8 +1,10 @@
+# Use host network so Art-Net UDP broadcast (10.255.255.255:6454) can leave
+# the host and reach fixtures on the LAN. With bridge networking, broadcast
+# packets stay inside the container network.
 services:
   barbeleuchtung:
     build: .
-    ports:
-      - "8080:8080"
+    network_mode: host
     environment:
       - TZ=Europe/Berlin
     restart: unless-stopped
