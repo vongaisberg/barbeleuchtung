@@ -121,7 +121,8 @@ impl Scheduler {
 ///
 /// Theme IDs match the order in `themes::all_themes()`:
 ///   0 = Mad Hatter's Workspace, 1 = Golden Afternoon,
-///   2 = Cheshire Moon,          3 = Closed
+///   2 = Cheshire Moon,          3 = Closed,
+///   4 = Police (manual),        5 = Sunlight (never scheduled)
 ///
 /// FX theme IDs match the order in `themes::all_fx_themes()`:
 ///   0 = fx_off, 1 = fx_looking_glass, 2 = fx_cheshire_grin, 3 = fx_white_rabbit

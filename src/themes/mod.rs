@@ -8,6 +8,7 @@ pub mod closed;
 pub mod golden_afternoon;
 pub mod mad_hatter;
 pub mod police;
+pub mod sunlight;
 pub mod fx_off;
 pub mod fx_looking_glass;
 pub mod fx_cheshire_grin;
@@ -142,6 +143,7 @@ pub fn all_themes() -> Vec<Theme> {
         cheshire_moon::theme(),    // 2 – 19:00–close
         closed::theme(),           // 3 – 02:00 onward
         police::theme(),           // 4 – manual override
+        sunlight::theme(),         // 5 – never scheduled, manual only
     ]
 }
 
@@ -152,6 +154,7 @@ pub fn theme_names() -> Vec<&'static str> {
         cheshire_moon::NAME,
         closed::NAME,
         police::NAME,
+        sunlight::NAME,
     ]
 }
 

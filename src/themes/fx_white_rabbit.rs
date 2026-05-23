@@ -56,7 +56,7 @@ const RAIN_COL_PHASE_STEP: f64 = 0.25;
 /// Full swell period in seconds: 0 % → 30 % → 0 %.
 const BLINDER_PERIOD_S: f64 = 10.0;
 /// Peak WW brightness of the swell.
-const BLINDER_PEAK: f32 = 0.40;
+const BLINDER_PEAK: f32 = 0.00;
 
 // ─── QuadPhase DMX + modulation parameters ───────────────────────────────────
 // ⚠  Approximate – verify against your fixture's DMX chart.

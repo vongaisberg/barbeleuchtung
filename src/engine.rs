@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Local;
 
-use crate::artnet::ArtNetSender;
+use crate::artnet::{ArtNetSender, SubscriberTable};
 use crate::effect::TickContext;
 use crate::fixture::{render_fixture, UniverseBuffer};
 use crate::fixtures;
@@ -22,9 +22,15 @@ pub const NUM_UNIVERSES: usize = 10;
 /// Run the engine loop forever in the calling thread.
 ///
 /// `state` is shared with the web server; `scheduler` is optional (pass
-/// `None` to disable time-of-day switching).
-pub fn run(state: Arc<Mutex<AppState>>, scheduler: Option<Scheduler>) {
-    let mut sender = match ArtNetSender::new() {
+/// `None` to disable time-of-day switching). `socket` and `subscribers` are
+/// shared with the Art-Net discovery thread for unicast transmission.
+pub fn run(
+    state: Arc<Mutex<AppState>>,
+    scheduler: Option<Scheduler>,
+    socket: std::net::UdpSocket,
+    subscribers: Arc<std::sync::RwLock<SubscriberTable>>,
+) {
+    let mut sender = match ArtNetSender::new(socket, subscribers) {
         Ok(s) => s,
         Err(e) => {
             log::error!("Failed to create Art-Net sender: {e}");
