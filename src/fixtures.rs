@@ -2,8 +2,10 @@
 //! Hardcoded fixture patch for the bar.
 //!
 //! Edit this file to match your actual DMX patch. Each fixture definition
-//! lists its Art-Net universe (0-based), its 0-based DMX start address, and
-//! the ordered logical channels (8-bit or 16-bit) that effects will drive.
+//! lists its Art-Net universe (0-based) and its **1-based** DMX start address
+//! (matching the convention used by every lighting console and ArtNet tool;
+//! see `src/fixture.rs`), followed by the ordered logical channels (8-bit
+//! or 16-bit) that effects will drive.
 //!
 //! # Fader mapping (independent faders)
 //! Faders are also fixtures listed here. The fader index in `FADERS` must
@@ -169,6 +171,23 @@ pub static FAN_GANG: Fixture = Fixture {
 };
 
 // ---------------------------------------------------------------------------
+// Traffic light (single-channel dimmers for the red and green bulbs)
+// ---------------------------------------------------------------------------
+
+pub static TRAFFIC_RED: Fixture = Fixture {
+    name: "Traffic Red",
+    universe: 2,
+    start_address: 1,
+    channels: DIMMER_CHANNELS,
+};
+pub static TRAFFIC_GREEN: Fixture = Fixture {
+    name: "Traffic Green",
+    universe: 2,
+    start_address: 2,
+    channels: DIMMER_CHANNELS,
+};
+
+// ---------------------------------------------------------------------------
 // Fog machine
 // ---------------------------------------------------------------------------
 
@@ -267,15 +286,23 @@ pub static FADER_FIXTURES: &[&Fixture] = &[
     &ARRI_1,
     &ARRI_2,
     &FAN_ZULUFT,
-    &FAN_GANG,
     &FAN_BAR,
+    &FAN_GANG,
+    &TRAFFIC_RED,
+    &TRAFFIC_GREEN,
 ];
 
 /// Labels shown in the UI for each fader (same order as `FADER_FIXTURES`).
+///
+/// The frontend keys off these strings to decide how to render each fader
+/// (continuous slider vs. fan on/off toggle vs. traffic-light bulb); keep
+/// them in sync with `static/app.js`.
 pub static FADER_LABELS: &[&str] = &[
     "Arri 1",
     "Arri 2",
     "Zuluft",
     "Bar",
     "Gang",
+    "Traffic Red",
+    "Traffic Green",
 ];

@@ -5,10 +5,13 @@
 
 pub mod cheshire_moon;
 pub mod closed;
+pub mod garden_of_flowers;
 pub mod golden_afternoon;
 pub mod mad_hatter;
 pub mod police;
+pub mod stained_glass;
 pub mod sunlight;
+pub mod tea_garden;
 pub mod fx_off;
 pub mod fx_looking_glass;
 pub mod fx_cheshire_grin;
@@ -138,12 +141,15 @@ pub(crate) fn uniform_ceiling(color: Rgbw) -> Vec<f32> {
 
 pub fn all_themes() -> Vec<Theme> {
     vec![
-        mad_hatter::theme(),       // 0 – 11:00–17:00
-        golden_afternoon::theme(), // 1 – 17:00–19:00
-        cheshire_moon::theme(),    // 2 – 19:00–close
-        closed::theme(),           // 3 – 02:00 onward
-        police::theme(),           // 4 – manual override
-        sunlight::theme(),         // 5 – never scheduled, manual only
+        mad_hatter::theme(),         // 0 – 11:00–17:00
+        golden_afternoon::theme(),   // 1 – 17:00–19:00
+        cheshire_moon::theme(),      // 2 – 19:00–close
+        closed::theme(),             // 3 – 02:00 onward
+        police::theme(),             // 4 – manual override
+        sunlight::theme(),           // 5 – manual override
+        garden_of_flowers::theme(),  // 6 – manual override
+        stained_glass::theme(),      // 7 – manual override
+        tea_garden::theme(),         // 8 – manual override
     ]
 }
 
@@ -155,6 +161,9 @@ pub fn theme_names() -> Vec<&'static str> {
         closed::NAME,
         police::NAME,
         sunlight::NAME,
+        garden_of_flowers::NAME,
+        stained_glass::NAME,
+        tea_garden::NAME,
     ]
 }
 

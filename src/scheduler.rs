@@ -10,6 +10,9 @@ pub struct ScheduleEntry {
     pub theme_id: Option<usize>,
     pub fx_theme_id: Option<usize>,
     pub fader_values: Option<Vec<f32>>,
+    /// If `Some`, set `AppState::fog_enabled` to this value when the entry fires.
+    /// Fog is not a fader fixture so it needs its own scheduling channel.
+    pub fog_enabled: Option<bool>,
 }
 
 /// Checks whether any schedule entry has been crossed since the last tick and,
@@ -41,6 +44,7 @@ impl Scheduler {
                 theme_id: Some(id),
                 fx_theme_id: None,
                 fader_values: None,
+                fog_enabled: None,
             })
             .collect();
         Self::new(entries)
@@ -112,6 +116,16 @@ impl Scheduler {
                         );
                     }
                 }
+
+                // Handle fog enable/disable
+                if let Some(fog_enabled) = entry.fog_enabled {
+                    state.fog_enabled = fog_enabled;
+                    log::info!(
+                        "Scheduler: fog_enabled = {} at {:?}",
+                        fog_enabled,
+                        current
+                    );
+                }
             }
         }
     }
@@ -128,26 +142,31 @@ impl Scheduler {
 ///   0 = fx_off, 1 = fx_looking_glass, 2 = fx_cheshire_grin, 3 = fx_white_rabbit
 pub fn complete_schedule() -> Scheduler {
     use crate::fixtures;
-    
-    // Fans on: all three fans (indices 2, 3, 4) set to 1.0
+
+    // Fans on: all three fan faders set to 1.0, all other faders left at 0.
+    // Indices match the order in `fixtures::FADER_FIXTURES`:
+    //   0 ARRI_1, 1 ARRI_2, 2 FAN_ZULUFT, 3 FAN_BAR, 4 FAN_GANG,
+    //   5 TRAFFIC_RED, 6 TRAFFIC_GREEN
     let fans_on = {
         let mut vals = vec![0.0; fixtures::FADER_FIXTURES.len()];
         vals[2] = 1.0; // FAN_ZULUFT
-        vals[3] = 1.0; // FAN_GANG
-        vals[4] = 1.0; // FAN_BAR
+        vals[3] = 1.0; // FAN_BAR
+        vals[4] = 1.0; // FAN_GANG
         vals
     };
-    
-    // Fans off: all fans set to 0.0
-    let fans_off = vec![0.0; fixtures::FADER_FIXTURES.len()];
-    
+
+    // All faders off (fans + traffic-light bulbs + Arri dimmers).
+    let all_faders_off = vec![0.0; fixtures::FADER_FIXTURES.len()];
+
     let mut entries = vec![
-        // 07:00 – Open, Mad Hatter daytime, FX off, fans off
+        // 07:00 – Open, Mad Hatter daytime, FX off, all faders off
+        //          (fans + traffic-light both red & green), fog disabled.
         ScheduleEntry {
             time: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
             theme_id: Some(0), // Mad Hatter's Workspace
             fx_theme_id: Some(0), // fx_off
-            fader_values: Some(fans_off.clone()),
+            fader_values: Some(all_faders_off.clone()),
+            fog_enabled: Some(false),
         },
         // 17:00 – Golden Afternoon transition, The Looking Glass starts
         ScheduleEntry {
@@ -155,6 +174,7 @@ pub fn complete_schedule() -> Scheduler {
             theme_id: Some(1), // Golden Afternoon
             fx_theme_id: Some(1), // fx_looking_glass
             fader_values: None,
+            fog_enabled: None,
         },
         // 21:00 – Cheshire Grin starts, fans turn on
         ScheduleEntry {
@@ -162,6 +182,7 @@ pub fn complete_schedule() -> Scheduler {
             theme_id: Some(2), // Keep current theme
             fx_theme_id: Some(2), // fx_cheshire_grin
             fader_values: Some(fans_on.clone()),
+            fog_enabled: None,
         },
         // 23:00 – White Rabbit starts
         ScheduleEntry {
@@ -169,6 +190,7 @@ pub fn complete_schedule() -> Scheduler {
             theme_id: None, // Keep current theme
             fx_theme_id: Some(3), // fx_white_rabbit
             fader_values: None, // Keep fans on
+            fog_enabled: None,
         },
 
     ];

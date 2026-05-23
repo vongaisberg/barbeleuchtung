@@ -88,10 +88,17 @@ function applyState(state) {
 
   // Update fader values (without re-triggering input events).
   state.faders.forEach((val, i) => {
-    const slider = document.getElementById(`fader-${i}`);
-    const label  = document.getElementById(`fader-val-${i}`);
-    if (slider && !slider._dragging) {
-      slider.value = val;
+    const el    = document.getElementById(`fader-${i}`);
+    const label = document.getElementById(`fader-val-${i}`);
+    if (el) {
+      if (el.tagName === 'INPUT') {
+        if (!el._dragging) el.value = val;
+      } else {
+        // Toggle button (fan or traffic-light bulb).
+        const on = val >= 0.5;
+        el.dataset.value = on ? '1' : '0';
+        el.classList.toggle('active', on);
+      }
     }
     if (label) label.textContent = Math.round(val * 100) + '%';
   });
@@ -123,6 +130,56 @@ function setFogSlider(sliderId, labelId, value, fmt) {
   const label  = document.getElementById(labelId);
   if (slider && !slider._dragging) slider.value = value;
   if (label) label.textContent = fmt(value);
+}
+
+// ---------------------------------------------------------------------------
+// Slider drag tracking
+//
+// Vertical (and small-thumb) <input type="range"> elements regularly lose
+// pointer capture mid-drag on mobile because the thumb moves out from under
+// the finger. The browser then fires pointerup even though the touch is
+// still down, our `_dragging` flag flips back to false, and the next state
+// echo from the server snaps the slider back to its last value – making the
+// slider look frozen after just a few ms of drag.
+//
+// This helper fixes that by:
+//   1. Calling setPointerCapture on pointerdown so the slider element owns
+//      the gesture for its entire lifetime, regardless of thumb position.
+//   2. Handling pointercancel / lostpointercapture as well as pointerup, so
+//      `_dragging` can't get stuck or be cleared prematurely.
+//   3. Clearing `_dragging` only after a short grace period, so a late echo
+//      from the server arriving 1-2 frames after release can't snap the
+//      slider back to its last-sent value.
+// ---------------------------------------------------------------------------
+const DRAG_RELEASE_GRACE_MS = 150;
+
+function attachDragTracking(el) {
+  el._dragging = false;
+  let releaseTimer = null;
+
+  const begin = (e) => {
+    if (releaseTimer) {
+      clearTimeout(releaseTimer);
+      releaseTimer = null;
+    }
+    el._dragging = true;
+    if (e.pointerId !== undefined && el.setPointerCapture) {
+      try { el.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    }
+  };
+
+  const end = () => {
+    if (releaseTimer) clearTimeout(releaseTimer);
+    releaseTimer = setTimeout(() => {
+      el._dragging = false;
+      releaseTimer = null;
+    }, DRAG_RELEASE_GRACE_MS);
+  };
+
+  el.addEventListener('pointerdown',        begin);
+  el.addEventListener('pointerup',          end);
+  el.addEventListener('pointercancel',      end);
+  el.addEventListener('lostpointercapture', end);
 }
 
 function sendFogSettings() {
@@ -170,55 +227,163 @@ function buildFxThemeButtons(names) {
   });
 }
 
+// Faders are sent to the backend as continuous values, but rendered in the UI
+// according to the fixture role inferred from its label.
+const FAN_FADER_LABELS   = new Set(['Zuluft', 'Bar', 'Gang']);
+const TRAFFIC_RED_LABEL   = 'Traffic Red';
+const TRAFFIC_GREEN_LABEL = 'Traffic Green';
+
 let fadersBuilt = false;
 function buildFaders(labels, initialValues) {
   if (fadersBuilt) return;
   fadersBuilt = true;
   const row = document.getElementById('fader-row');
   row.innerHTML = '';
+
+  const sliders = [];
+  const fans    = [];
+  let trafficRed   = null;
+  let trafficGreen = null;
+
   labels.forEach((label, i) => {
-    const initVal = initialValues ? initialValues[i] : 0;
-
-    const col = document.createElement('div');
-    col.className = 'fader-col';
-
-    const nameLabel = document.createElement('span');
-    nameLabel.className = 'fader-label';
-    nameLabel.textContent = label;
-
-    const trackDiv = document.createElement('div');
-    trackDiv.className = 'fader-track';
-
-    const slider = document.createElement('input');
-    slider.type      = 'range';
-    slider.className = 'fader-input';
-    slider.min       = '0';
-    slider.max       = '1';
-    slider.step      = '0.01';
-    slider.value     = initVal;
-    slider.id        = `fader-${i}`;
-    slider._dragging = false;
-
-    const valLabel = document.createElement('span');
-    valLabel.className   = 'fader-value';
-    valLabel.id          = `fader-val-${i}`;
-    valLabel.textContent = Math.round(initVal * 100) + '%';
-
-    slider.addEventListener('pointerdown', () => { slider._dragging = true; });
-    slider.addEventListener('pointerup',   () => { slider._dragging = false; });
-    slider.addEventListener('touchmove',   (e) => { e.preventDefault(); }, { passive: false });
-    slider.addEventListener('input', () => {
-      const val = parseFloat(slider.value);
-      valLabel.textContent = Math.round(val * 100) + '%';
-      send({ type: 'fader', id: i, value: val });
-    });
-
-    trackDiv.appendChild(slider);
-    col.appendChild(nameLabel);
-    col.appendChild(trackDiv);
-    col.appendChild(valLabel);
-    row.appendChild(col);
+    const val = initialValues ? initialValues[i] : 0;
+    const entry = { label, i, val };
+    if (FAN_FADER_LABELS.has(label)) {
+      fans.push(entry);
+    } else if (label === TRAFFIC_RED_LABEL) {
+      trafficRed = entry;
+    } else if (label === TRAFFIC_GREEN_LABEL) {
+      trafficGreen = entry;
+    } else {
+      sliders.push(entry);
+    }
   });
+
+  sliders.forEach(e => row.appendChild(buildSliderColumn(e)));
+  if (fans.length > 0) row.appendChild(buildFanGroup(fans));
+  if (trafficRed || trafficGreen) row.appendChild(buildTrafficLight(trafficRed, trafficGreen));
+}
+
+function buildSliderColumn({ label, i, val }) {
+  const col = document.createElement('div');
+  col.className = 'fader-col';
+
+  const nameLabel = document.createElement('span');
+  nameLabel.className = 'fader-label';
+  nameLabel.textContent = label;
+
+  const trackDiv = document.createElement('div');
+  trackDiv.className = 'fader-track';
+
+  const slider = document.createElement('input');
+  slider.type      = 'range';
+  slider.className = 'fader-input';
+  slider.min       = '0';
+  slider.max       = '1';
+  slider.step      = '0.01';
+  slider.value     = val;
+  slider.id        = `fader-${i}`;
+
+  const valLabel = document.createElement('span');
+  valLabel.className   = 'fader-value';
+  valLabel.id          = `fader-val-${i}`;
+  valLabel.textContent = Math.round(val * 100) + '%';
+
+  attachDragTracking(slider);
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    valLabel.textContent = Math.round(v * 100) + '%';
+    send({ type: 'fader', id: i, value: v });
+  });
+
+  trackDiv.appendChild(slider);
+  col.appendChild(nameLabel);
+  col.appendChild(trackDiv);
+  col.appendChild(valLabel);
+  return col;
+}
+
+function buildFanGroup(entries) {
+  const col = document.createElement('div');
+  col.className = 'fader-group';
+
+  const header = document.createElement('span');
+  header.className = 'fader-label';
+  header.textContent = 'Fans';
+
+  const stack = document.createElement('div');
+  stack.className = 'fan-stack';
+
+  entries.forEach(({ label, i, val }) => {
+    const on = val >= 0.5;
+    const btn = document.createElement('button');
+    btn.className     = 'fan-toggle';
+    btn.id            = `fader-${i}`;
+    btn.dataset.value = on ? '1' : '0';
+    btn.classList.toggle('active', on);
+    btn.textContent   = label;
+    btn.addEventListener('click', () => {
+      const newOn = btn.dataset.value !== '1';
+      const newVal = newOn ? 1 : 0;
+      btn.dataset.value = newOn ? '1' : '0';
+      btn.classList.toggle('active', newOn);
+      send({ type: 'fader', id: i, value: newVal });
+    });
+    stack.appendChild(btn);
+  });
+
+  col.appendChild(header);
+  col.appendChild(stack);
+  return col;
+}
+
+function buildTrafficLight(red, green) {
+  const col = document.createElement('div');
+  col.className = 'fader-group';
+
+  const header = document.createElement('span');
+  header.className = 'fader-label';
+  header.textContent = 'Ampel';
+
+  const housing = document.createElement('div');
+  housing.className = 'traffic-light';
+
+  // Red bulb on top, green on bottom: pressing one turns the other off so
+  // only one bulb can be lit at a time.
+  const redBtn   = red   ? makeTrafficBulb(red,   'red',   () => green && setBulbOff(greenBtn, green.i)) : null;
+  const greenBtn = green ? makeTrafficBulb(green, 'green', () => red   && setBulbOff(redBtn,   red.i))   : null;
+  if (redBtn)   housing.appendChild(redBtn);
+  if (greenBtn) housing.appendChild(greenBtn);
+
+  col.appendChild(header);
+  col.appendChild(housing);
+  return col;
+}
+
+function makeTrafficBulb({ label, i, val }, color, onActivate) {
+  const on = val >= 0.5;
+  const btn = document.createElement('button');
+  btn.className     = `traffic-bulb ${color}`;
+  btn.id            = `fader-${i}`;
+  btn.dataset.value = on ? '1' : '0';
+  btn.classList.toggle('active', on);
+  btn.setAttribute('aria-label', label);
+  btn.addEventListener('click', () => {
+    const newOn = btn.dataset.value !== '1';
+    const newVal = newOn ? 1 : 0;
+    btn.dataset.value = newOn ? '1' : '0';
+    btn.classList.toggle('active', newOn);
+    send({ type: 'fader', id: i, value: newVal });
+    if (newOn) onActivate();
+  });
+  return btn;
+}
+
+function setBulbOff(btn, i) {
+  if (!btn || btn.dataset.value !== '1') return;
+  btn.dataset.value = '0';
+  btn.classList.remove('active');
+  send({ type: 'fader', id: i, value: 0 });
 }
 
 // ---------------------------------------------------------------------------
@@ -241,9 +406,7 @@ document.getElementById('fog-btn').addEventListener('click', () => {
 
 ['fog-interval', 'fog-duration', 'fog-level'].forEach(id => {
   const el = document.getElementById(id);
-  el._dragging = false;
-  el.addEventListener('pointerdown', () => { el._dragging = true; });
-  el.addEventListener('pointerup',   () => { el._dragging = false; });
+  attachDragTracking(el);
   el.addEventListener('input', () => {
     // Update local label immediately for responsive feel.
     const val = parseFloat(el.value);
