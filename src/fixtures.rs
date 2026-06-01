@@ -306,3 +306,24 @@ pub static FADER_LABELS: &[&str] = &[
     "Traffic Red",
     "Traffic Green",
 ];
+
+// ---------------------------------------------------------------------------
+// Patched Art-Net universes
+// ---------------------------------------------------------------------------
+
+/// The Art-Net universes that actually carry fixtures, in display order.
+///
+/// The frontend renders one mute-pill per entry in the status bar so an
+/// operator can stop ArtDmx transmission for an individual universe (distinct
+/// from blackout, which still sends all-zero frames).  Universes not listed
+/// here are never sent on the wire anyway, so they don't need a pill.
+///
+/// Tuple is `(universe_index, short_label)`.  Keep in sync with the actual
+/// patch above.
+pub static PATCHED_UNIVERSES: &[(u16, &str)] = &[
+    (0,  "Floor"),   // Arri dimmers, fans, fog
+    (1,  "FX"),      // RootPars, PixStrobes, QuadPhases
+    (2,  "Traffic"), // Traffic-light bulbs
+    (9,  "Lounge"),  // LOUNGE_DECKE
+    (10, "Bar"),     // BAR_DECKE
+];

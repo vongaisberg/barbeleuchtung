@@ -16,8 +16,23 @@ pub const TICK_RATE_HZ: u64 = 40;
 const TICK_DURATION: Duration = Duration::from_micros(1_000_000 / TICK_RATE_HZ);
 
 /// Number of Art-Net universes to maintain buffers for.
-/// Must be larger than the highest universe index used in fixtures.rs.
-pub const NUM_UNIVERSES: usize = 10;
+///
+/// Derived from `fixtures::PATCHED_UNIVERSES` at compile time as
+/// `max_universe + 1`, so adding a fixture on a new universe number only
+/// requires updating that one table. The engine, the `AppState` mute vector,
+/// and the web snapshot all stay in sync automatically.
+pub const NUM_UNIVERSES: usize = {
+    let mut max = 0usize;
+    let mut i = 0;
+    while i < fixtures::PATCHED_UNIVERSES.len() {
+        let u = fixtures::PATCHED_UNIVERSES[i].0 as usize;
+        if u > max {
+            max = u;
+        }
+        i += 1;
+    }
+    max + 1
+};
 
 /// Run the engine loop forever in the calling thread.
 ///
@@ -71,7 +86,7 @@ pub fn run(
 
         // --- Read & advance shared state (lock held as briefly as possible) ---
         let (active_id, crossfade_snapshot, active_fx_id, fx_crossfade_snapshot, fader_values, blackout,
-             fog_enabled, fog_interval_min, fog_duration_s, fog_level) = {
+             fog_enabled, fog_interval_min, fog_duration_s, fog_level, universe_muted) = {
             let mut s = state.lock().unwrap();
 
             // Advance crossfade (marks it complete when done).
@@ -89,7 +104,8 @@ pub fn run(
             let id = s.active_theme_id;
             let fx_id = s.active_fx_theme_id;
             let fog = (s.fog_enabled, s.fog_interval_min, s.fog_duration_s, s.fog_level);
-            (id, cf, fx_id, fx_cf, faders, bo, fog.0, fog.1, fog.2, fog.3)
+            let muted = s.universe_muted.clone();
+            (id, cf, fx_id, fx_cf, faders, bo, fog.0, fog.1, fog.2, fog.3, muted)
         };
 
         // --- Zero all universe buffers each tick ---
@@ -169,8 +185,15 @@ pub fn run(
             }
         }
 
-        // --- Send all universes over Art-Net ---
+        // --- Send all universes over Art-Net (skipping muted ones) ---
+        // A muted universe gets no ArtDmx frame at all this tick; fixtures
+        // patched on it will see signal loss and may fall back to standalone
+        // behaviour.  Compare to `blackout`, which still transmits a frame
+        // full of zeros.
         for (uni_idx, buf) in universe_buffers.iter().enumerate() {
+            if universe_muted.get(uni_idx).copied().unwrap_or(false) {
+                continue;
+            }
             if let Err(e) = sender.send_universe(uni_idx as u16, buf.as_ref()) {
                 log::warn!("Art-Net send error on universe {uni_idx}: {e}");
             }

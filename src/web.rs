@@ -30,6 +30,17 @@ pub struct StateSnapshot {
     fog_interval_min: f32,
     fog_duration_s: f32,
     fog_level: f32,
+    /// Patched universes + their current mute state, in `PATCHED_UNIVERSES`
+    /// order.  The frontend renders one pill per entry in the status bar.
+    universes: Vec<UniverseInfo>,
+}
+
+/// One patched DMX universe as exposed to the frontend.
+#[derive(Serialize, Clone, Debug)]
+pub struct UniverseInfo {
+    universe: u16,
+    label: &'static str,
+    muted: bool,
 }
 
 impl StateSnapshot {
@@ -47,6 +58,18 @@ impl StateSnapshot {
             .as_ref()
             .map(|cf| cf.to_theme_id)
             .unwrap_or(state.active_fx_theme_id);
+        let universes = fixtures::PATCHED_UNIVERSES
+            .iter()
+            .map(|&(universe, label)| UniverseInfo {
+                universe,
+                label,
+                muted: state
+                    .universe_muted
+                    .get(universe as usize)
+                    .copied()
+                    .unwrap_or(false),
+            })
+            .collect();
         Self {
             msg_type: "state",
             theme,
@@ -60,6 +83,7 @@ impl StateSnapshot {
             fog_interval_min: state.fog_interval_min,
             fog_duration_s: state.fog_duration_s,
             fog_level: state.fog_level,
+            universes,
         }
     }
 }
@@ -74,6 +98,8 @@ enum ClientMessage {
     Blackout { active: bool },
     FogEnabled { active: bool },
     FogSettings { interval_min: f32, duration_s: f32, level: f32 },
+    /// Mute or un-mute ArtDmx transmission for a single universe.
+    UniverseOutput { universe: u16, muted: bool },
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +249,18 @@ fn handle_client_message(
             s.fog_interval_min = interval_min.clamp(1.0, 30.0);
             s.fog_duration_s   = duration_s.clamp(5.0, 25.0);
             s.fog_level        = level.clamp(0.20, 0.70);
+        }
+        ClientMessage::UniverseOutput { universe, muted } => {
+            let idx = universe as usize;
+            if idx < s.universe_muted.len() {
+                s.universe_muted[idx] = muted;
+                log::info!(
+                    "Universe {universe} output {}",
+                    if muted { "muted" } else { "resumed" }
+                );
+            } else {
+                log::warn!("Universe {universe} out of range, ignoring mute request");
+            }
         }
     }
 

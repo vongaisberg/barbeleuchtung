@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use crate::engine::NUM_UNIVERSES;
 use crate::fixtures;
 
 /// Tracks an in-progress crossfade between two theme IDs.
@@ -50,6 +51,12 @@ pub struct AppState {
     pub fog_duration_s: f32,
     /// Pump output level (z), in `0.0..=1.0`.  Range: 0.1–1.0.
     pub fog_level: f32,
+    /// Per-universe DMX output mute, indexed by Art-Net universe number.
+    /// When `universe_muted[uni]` is `true`, the engine skips sending the
+    /// ArtDmx frame for that universe entirely (it does *not* send all-zero
+    /// frames – that is what `blackout` does).  Length always equals
+    /// `engine::NUM_UNIVERSES`.
+    pub universe_muted: Vec<bool>,
 }
 
 impl AppState {
@@ -65,6 +72,7 @@ impl AppState {
             fog_interval_min: 5.0,
             fog_duration_s: 5.0,
             fog_level: 0.5,
+            universe_muted: vec![false; NUM_UNIVERSES],
         }
     }
 

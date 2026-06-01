@@ -123,6 +123,8 @@ function applyState(state) {
     setFogSlider('fog-level',     'fog-level-val',     state.fog_level * 100,
                  v => Math.round(v) + ' %');
   }
+
+  if (state.universes) applyUniverses(state.universes);
 }
 
 function setFogSlider(sliderId, labelId, value, fmt) {
@@ -423,12 +425,96 @@ document.getElementById('fog-btn').addEventListener('click', () => {
 
 // ---------------------------------------------------------------------------
 // Status bar helper
+//
+// The status bar contains a connection-state label on the left and the
+// universe-mute pill row on the right. Only the connection label is rewritten
+// by setStatus(); the pills are managed by applyUniverses() below so they
+// survive every state push.
 // ---------------------------------------------------------------------------
 
 function setStatus(text, cls) {
-  const bar = document.getElementById('status-bar');
-  bar.textContent = text;
+  const bar  = document.getElementById('status-bar');
+  const conn = document.getElementById('status-bar-conn');
+  if (conn) conn.textContent = text;
   bar.className = 'status-bar ' + (cls || '');
+}
+
+// ---------------------------------------------------------------------------
+// Universe-mute pills
+//
+// One small clickable pill per patched DMX universe, rendered in the status
+// bar. Click toggles whether the engine sends ArtDmx for that universe at all
+// (distinct from blackout, which still transmits all-zero frames).
+//
+// On every click we also briefly flash the universe's label in the status
+// text — this is the "label tooltip" for touch devices where hovering the
+// pill's `title` attribute isn't available.
+// ---------------------------------------------------------------------------
+
+let universesBuilt    = false;
+let baseStatusText    = 'Connected';
+let baseStatusClass   = 'connected';
+let pillFlashTimer    = null;
+
+function applyUniverses(universes) {
+  const row = document.getElementById('universe-pills');
+  if (!row) return;
+
+  if (!universesBuilt) {
+    universesBuilt = true;
+    row.innerHTML = '';
+    universes.forEach((u) => {
+      const pill = document.createElement('button');
+      pill.type            = 'button';
+      pill.className       = 'universe-pill';
+      pill.dataset.universe = String(u.universe);
+      pill.dataset.label    = u.label;
+      pill.textContent     = `U${u.universe}`;
+      pill.title           = `${u.label} (universe ${u.universe})`;
+      pill.setAttribute('aria-label', pill.title);
+      pill.addEventListener('click', () => {
+        const muted = pill.classList.contains('muted');
+        // Optimistic update so the UI feels instant; the server echo will
+        // reaffirm the same state on the next snapshot.
+        pill.classList.toggle('muted', !muted);
+        flashPillLabel(pill, !muted);
+        send({
+          type: 'universe_output',
+          universe: parseInt(pill.dataset.universe, 10),
+          muted: !muted,
+        });
+      });
+      row.appendChild(pill);
+    });
+  }
+
+  // Refresh per-pill state from the snapshot.
+  universes.forEach((u) => {
+    const pill = row.querySelector(`.universe-pill[data-universe="${u.universe}"]`);
+    if (pill) pill.classList.toggle('muted', !!u.muted);
+  });
+
+  // Reflect the aggregate state in the status bar (and remember it so the
+  // pill-flash transient can restore it afterwards).
+  const mutedCount = universes.filter((u) => u.muted).length;
+  if (mutedCount > 0) {
+    baseStatusText  = `Connected · ${mutedCount} universe${mutedCount === 1 ? '' : 's'} muted`;
+    baseStatusClass = 'connected warning';
+  } else {
+    baseStatusText  = 'Connected';
+    baseStatusClass = 'connected';
+  }
+  if (!pillFlashTimer) setStatus(baseStatusText, baseStatusClass);
+}
+
+function flashPillLabel(pill, nowMuted) {
+  const text = `${pill.dataset.label} (U${pill.dataset.universe}) — ${nowMuted ? 'muted' : 'sending'}`;
+  setStatus(text, nowMuted ? 'connected warning' : 'connected');
+  if (pillFlashTimer) clearTimeout(pillFlashTimer);
+  pillFlashTimer = setTimeout(() => {
+    pillFlashTimer = null;
+    setStatus(baseStatusText, baseStatusClass);
+  }, 1600);
 }
 
 // ---------------------------------------------------------------------------

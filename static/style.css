@@ -463,13 +463,74 @@ input.fog-slider::-moz-range-thumb {
   padding-top: 14px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.status-bar::before {
+.status-bar-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.status-bar-conn::before {
   content: '●';
   font-size: 0.55rem;
 }
 
-.status-bar.connected    { color: #43a047; }
-.status-bar.disconnected { color: #e53935; }
+.status-bar.connected    .status-bar-conn { color: #43a047; }
+.status-bar.disconnected .status-bar-conn { color: #e53935; }
+.status-bar.warning      .status-bar-conn { color: #c08200; }
+
+/* ----- Per-universe mute pills ----- */
+.universe-pills-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.universe-pills-label::before {
+  content: '// ';
+}
+
+.universe-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.universe-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border-mid);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.1s, border-color 0.1s;
+  padding-top: 1px;            /* optical alignment for monospaced caps */
+}
+
+.universe-pill:hover { color: var(--text); }
+
+.universe-pill.muted {
+  color: #c08200;
+  border-color: #c08200;
+}
+.universe-pill.muted:hover { color: #e6a200; border-color: #e6a200; }
