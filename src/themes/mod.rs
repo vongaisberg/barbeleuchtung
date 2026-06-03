@@ -16,6 +16,8 @@ pub mod fx_off;
 pub mod fx_looking_glass;
 pub mod fx_cheshire_grin;
 pub mod fx_white_rabbit;
+pub mod fx_off_with_their_heads;
+pub mod fx_jabberwocky;
 
 use crate::theme::Theme;
 
@@ -88,6 +90,90 @@ impl Rgbw {
             w: self.w + other.w,
         }
     }
+}
+
+// ─── SC-X50 MkII DMX channel constants ───────────────────────────────────
+//
+// All values are normalised to [0.0, 1.0] (= DMX value / 255).
+// The 11-channel order is:
+//   [0] pan  [1] tilt  [2] color  [3] shutter  [4] dimmer
+//   [5] gobo  [6] gobo-rot  [7] prism  [8] focus  [9] functions  [10] programs
+
+/// Shutter: fully open (DMX 4–7 or 216–255 = open; we use 216).
+pub(crate) const SC_SHUTTER_OPEN: f32  = 216.0 / 255.0;
+/// Shutter: blackout / closed (DMX 0–3).
+pub(crate) const SC_SHUTTER_CLOSED: f32 = 0.0;
+/// Shutter: medium-fast strobe (DMX ≈ 120 out of the 8–215 range).
+pub(crate) const SC_SHUTTER_STROBE_MED: f32 = 120.0 / 255.0;
+
+// Color wheel positions (centre of each clean-color band):
+pub(crate) const SC_COLOR_WHITE:     f32 =   3.0 / 255.0; // 0–6
+pub(crate) const SC_COLOR_YELLOW:    f32 =  10.0 / 255.0; // 7–13
+pub(crate) const SC_COLOR_PINK:      f32 =  17.0 / 255.0; // 14–20
+pub(crate) const SC_COLOR_GREEN:     f32 =  24.0 / 255.0; // 21–27
+pub(crate) const SC_COLOR_RED:       f32 =  31.0 / 255.0; // 28–34
+pub(crate) const SC_COLOR_BLUE:      f32 =  38.0 / 255.0; // 35–41
+pub(crate) const SC_COLOR_KGREEN:    f32 =  45.0 / 255.0; // 42–48 kelly-green
+pub(crate) const SC_COLOR_SALMON:    f32 =  52.0 / 255.0; // 49–55 lachsrot / salmon
+pub(crate) const SC_COLOR_DKBLUE:    f32 =  59.0 / 255.0; // 56–63 dark blue
+/// Slow positive rainbow spin.
+pub(crate) const SC_COLOR_RAINBOW:   f32 = 148.0 / 255.0; // 128–191
+
+// Gobo wheel positions (centre of each band, 8 ch mode & 11 ch mode identical):
+pub(crate) const SC_GOBO_OPEN:       f32 =   3.0 / 255.0; // 0–7
+pub(crate) const SC_GOBO_1:          f32 =  11.0 / 255.0; // 8–15
+pub(crate) const SC_GOBO_2:          f32 =  19.0 / 255.0; // 16–23
+pub(crate) const SC_GOBO_3:          f32 =  27.0 / 255.0; // 24–31
+pub(crate) const SC_GOBO_4:          f32 =  35.0 / 255.0; // 32–39
+pub(crate) const SC_GOBO_5:          f32 =  43.0 / 255.0; // 40–47
+pub(crate) const SC_GOBO_6:          f32 =  51.0 / 255.0; // 48–55
+pub(crate) const SC_GOBO_7:          f32 =  59.0 / 255.0; // 56–63
+/// Slow positive gobo rainbow spin (128–191).
+pub(crate) const SC_GOBO_SPIN:       f32 = 148.0 / 255.0;
+
+// Gobo rotation speeds:
+/// No rotation.
+pub(crate) const SC_GOBOROT_NONE:    f32 =  30.0 / 255.0; // 0–63
+/// Disabled due to creaky gear
+pub(crate) const SC_GOBOROT_MED_POS: f32 = SC_GOBOROT_NONE;
+/// Disabled due to creaky gear
+pub(crate) const SC_GOBOROT_FAST_POS: f32 = SC_GOBOROT_NONE;
+
+// Prism:
+/// Prism off (0–3 = unused).
+pub(crate) const SC_PRISM_OFF:    f32 =   0.0 / 255.0;
+/// Prism: medium positive rotation (midpoint of 4–127).
+pub(crate) const SC_PRISM_ROT:    f32 =  32.0 / 255.0;
+/// Prism: static (252–255).
+pub(crate) const SC_PRISM_STATIC: f32 = 254.0 / 255.0;
+
+// Focus – midpoint is typically in focus for stage-mounted scanners.
+pub(crate) const SC_FOCUS_MID: f32 = 0.5;
+
+// Functions channel – 0 = none / no auto-blackout during movement.
+pub(crate) const SC_FUNC_NONE: f32 = 0.0;
+
+// Programs channel – 0 = DMX control (no built-in program).
+pub(crate) const SC_PROG_DMX: f32 = 0.0;
+
+/// Build a flat 11-channel Vec for one SC-X50 MkII frame.
+///
+/// Argument order mirrors the DMX channel order so it's easy to cross-reference
+/// with the manual: pan, tilt, color, shutter, dimmer, gobo, gobo_rot,
+/// prism, focus, functions, programs.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn scanner_frame(
+    pan: f32,
+    tilt: f32,
+    color: f32,
+    shutter: f32,
+    dimmer: f32,
+    gobo: f32,
+    gobo_rot: f32,
+    prism: f32,
+    focus: f32,
+) -> Vec<f32> {
+    vec![pan, tilt, color, shutter, dimmer, gobo, gobo_rot, prism, focus, SC_FUNC_NONE, SC_PROG_DMX]
 }
 
 // ─── Shared LFO helpers ───────────────────────────────────────────────────
@@ -171,10 +257,12 @@ pub fn theme_names() -> Vec<&'static str> {
 
 pub fn all_fx_themes() -> Vec<Theme> {
     vec![
-        fx_off::theme(),             // 0 – all FX fixtures dark
-        fx_looking_glass::theme(),   // 1 – daytime: glinting gems + amber pars
-        fx_cheshire_grin::theme(),     // 2 – evening: cheshire grin + vortex beams
-        fx_white_rabbit::theme(),    // 3 – late night: digital rain + chaos beams
+        fx_off::theme(),                    // 0 – all FX fixtures dark
+        fx_looking_glass::theme(),          // 1 – daytime: glinting gems + amber pars
+        fx_cheshire_grin::theme(),          // 2 – evening: cheshire grin + vortex beams
+        fx_white_rabbit::theme(),           // 3 – late night: digital rain + chaos beams + scanner lighthouse
+        fx_off_with_their_heads::theme(),   // 4 – late night: hard red/white + scanner stabs
+        fx_jabberwocky::theme(),            // 5 – late night: green/purple predator + scanner eyes
     ]
 }
 
@@ -184,5 +272,7 @@ pub fn fx_theme_names() -> Vec<&'static str> {
         fx_looking_glass::NAME,
         fx_cheshire_grin::NAME,
         fx_white_rabbit::NAME,
+        fx_off_with_their_heads::NAME,
+        fx_jabberwocky::NAME,
     ]
 }

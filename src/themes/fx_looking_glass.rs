@@ -14,12 +14,20 @@
 //!
 //! - **LEDPars (RootPars)**: Static amber/orange at 20 % – just enough warmth on
 //!   the back wall to keep it from being a black void.
+//!
+//! - **Scanners**: A single very slow, white, pseudo-random beam per unit drifts
+//!   across the room (≈ 60–70 s wander) using the organic two-sine LFO, kept high
+//!   to stay off faces.  Open gobo, no rotation, no prism – just a quiet moving
+//!   accent that reads as kinetic art rather than a club effect.
 
 use crate::effect::{Constant, Effect, TickContext};
 use crate::fixtures;
 use crate::theme::{Binding, Theme, Transition};
 
-use super::organic_lfo;
+use super::{
+    organic_lfo, scanner_frame, SC_COLOR_WHITE, SC_FOCUS_MID, SC_GOBO_OPEN, SC_GOBOROT_NONE,
+    SC_PRISM_OFF, SC_SHUTTER_OPEN,
+};
 
 pub const NAME: &str = "The Looking Glass";
 
@@ -83,6 +91,55 @@ impl Effect for GlintingGems {
     }
 }
 
+// ─── Scanner "Slow Drift" ────────────────────────────────────────────────────
+
+/// Movement LFO frequency (Hz).  ≈ 0.015 Hz ⇒ quasi-period of ~65 s, so the
+/// beam wanders very slowly.  The two axes use slightly different rates so the
+/// path traces a slowly-evolving Lissajous figure that never quite repeats.
+const DRIFT_FREQ: f64 = 0.015;
+/// Pan wander range around center (0.5 = straight ahead).
+const DRIFT_PAN_CENTER: f32 = 0.50;
+const DRIFT_PAN_AMP: f32 = 0.38;
+/// Tilt stays in the upper half so the beam never hits seated faces.
+const DRIFT_TILT_CENTER: f32 = 0.62;
+const DRIFT_TILT_AMP: f32 = 0.16;
+/// Beam brightness – gentle; this is an ambient daytime accent.
+const DRIFT_DIMMER: f32 = 0.55;
+
+/// Very slow, pseudo-random white beam wander.
+///
+/// `seed` offsets the LFO spot index so the two scanners drift independently
+/// and never mirror each other.
+struct ScannerDrift {
+    seed: usize,
+}
+
+impl Effect for ScannerDrift {
+    fn channel_count(&self) -> usize {
+        11
+    }
+
+    fn tick(&self, ctx: &TickContext) -> Vec<f32> {
+        // Independent pseudo-random LFOs per axis (different seeds + rates).
+        let pan = DRIFT_PAN_CENTER
+            + DRIFT_PAN_AMP * organic_lfo(ctx.time, self.seed, DRIFT_FREQ);
+        let tilt = DRIFT_TILT_CENTER
+            + DRIFT_TILT_AMP * organic_lfo(ctx.time, self.seed + 37, DRIFT_FREQ * 0.7);
+
+        scanner_frame(
+            pan,
+            tilt,
+            SC_COLOR_WHITE,
+            SC_SHUTTER_OPEN,
+            DRIFT_DIMMER,
+            SC_GOBO_OPEN,
+            SC_GOBOROT_NONE,
+            SC_PRISM_OFF,
+            SC_FOCUS_MID,
+        )
+    }
+}
+
 // ─── Theme factory ──────────────────────────────────────────────────────────
 
 pub fn theme() -> Theme {
@@ -104,6 +161,9 @@ pub fn theme() -> Theme {
             Binding::single(&fixtures::ROOTPAR_2, par()),
             Binding::single(&fixtures::ROOTPAR_3, par()),
             Binding::single(&fixtures::ROOTPAR_4, par()),
+            // Scanners: very slow pseudo-random white drift (independent seeds).
+            Binding::single(&fixtures::SCANNER_1, ScannerDrift { seed: 0 }),
+            Binding::single(&fixtures::SCANNER_2, ScannerDrift { seed: 64 }),
         ],
     )
 }

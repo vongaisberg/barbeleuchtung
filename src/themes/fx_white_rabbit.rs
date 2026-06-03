@@ -28,6 +28,10 @@
 use crate::effect::{Effect, TickContext};
 use crate::fixtures;
 use crate::theme::{Binding, Theme, Transition};
+use crate::themes::{
+    scanner_frame, SC_COLOR_GREEN, SC_FOCUS_MID, SC_GOBO_4, SC_GOBO_2, SC_GOBOROT_MED_POS,
+    SC_PRISM_OFF, SC_SHUTTER_CLOSED, SC_SHUTTER_OPEN,
+};
 
 
 pub const NAME: &str = "The White Rabbit";
@@ -204,6 +208,69 @@ impl Effect for RootParChase {
     }
 }
 
+// ─── Scanner "Counter-Rotating Lighthouse" ───────────────────────────────────
+//
+// The two scanners sweep pan in opposite directions at the same speed so their
+// beams are always pointing symmetrically relative to stage-center. A slow
+// tilt sine keeps the beams in the upper half of the room.
+// On every 4/4 downbeat the shutter fires a single-frame stab.
+
+/// Full pan sweep period (both scanners complete one full 0→1→0 sweep in this time).
+const SCAN_PAN_PERIOD_S: f64 = 8.0;
+/// Tilt: slowly rocks between mid-tilt and near-ceiling.
+const SCAN_TILT_PERIOD_S: f64 = 12.0;
+/// Tilt center (0 = full down, 1 = full up / ceiling).
+const SCAN_TILT_CENTER: f32 = 0.6;
+/// Tilt rock amplitude around the center.
+const SCAN_TILT_AMP: f32 = 0.4;
+/// Dimmer level (scanners are bright; keep moderate in a dance context).
+const SCAN_DIMMER: f32 = 0.75;
+
+/// How long (seconds) the shutter-stab stays open on the downbeat.
+const SCAN_STAB_DURATION_S: f64 = 0.04; // ≈ 1.5 frames at 40 Hz
+
+struct ScannerLighthouse {
+    /// When true scanner sweeps pan in reverse (creates the counter-rotation).
+    reverse_pan: bool,
+}
+
+impl Effect for ScannerLighthouse {
+    fn channel_count(&self) -> usize {
+        11
+    }
+
+    fn tick(&self, ctx: &TickContext) -> Vec<f32> {
+        // Pan: smooth 0→1→0 sine, reversed for the second unit.
+        let pan_raw = (0.5 + 0.3 * (std::f64::consts::TAU * ctx.time / SCAN_PAN_PERIOD_S).sin()) as f32;
+        let pan = if self.reverse_pan { 1.0 - pan_raw } else { pan_raw };
+
+        // Tilt: gentle sine staying high to avoid faces.
+        let tilt = SCAN_TILT_CENTER
+            + SCAN_TILT_AMP
+                * (std::f64::consts::TAU * ctx.time / SCAN_TILT_PERIOD_S).sin() as f32;
+
+        // Beat-synced shutter stab: open for SCAN_STAB_DURATION_S on each downbeat.
+        let t_in_beat = ctx.time.rem_euclid(PAR_BEAT_PERIOD_S);
+        //let shutter = if t_in_beat < SCAN_STAB_DURATION_S {
+        //    SC_SHUTTER_OPEN
+        //} else {
+        //    SC_SHUTTER_CLOSED
+        //};
+        let shutter = SC_SHUTTER_OPEN;
+        scanner_frame(
+            pan,
+            tilt,
+            SC_COLOR_GREEN,
+            shutter,
+            SCAN_DIMMER,
+            SC_GOBO_2,          // dotted/breakup gobo for matrix-rain feel
+            SC_GOBOROT_MED_POS, // slow spin keeps the breakup pattern moving
+            SC_PRISM_OFF,       
+            SC_FOCUS_MID,
+        )
+    }
+}
+
 // ─── Theme factory ──────────────────────────────────────────────────────────
 
 pub fn theme() -> Theme {
@@ -223,6 +290,9 @@ pub fn theme() -> Theme {
             Binding::single(&fixtures::ROOTPAR_2, RootParChase { step: 1 }),
             Binding::single(&fixtures::ROOTPAR_3, RootParChase { step: 2 }),
             Binding::single(&fixtures::ROOTPAR_4, RootParChase { step: 3 }),
+            // Scanners: counter-rotating lighthouse in green + prism scatter.
+            Binding::single(&fixtures::SCANNER_1, ScannerLighthouse { reverse_pan: false }),
+            Binding::single(&fixtures::SCANNER_2, ScannerLighthouse { reverse_pan: true }),
         ],
     )
 }

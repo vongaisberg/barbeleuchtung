@@ -262,6 +262,40 @@ pub static BAR_DECKE: Fixture = Fixture {
     channels: DECKE_CHANNELS,
 };
 // ---------------------------------------------------------------------------
+// Stairville SC-X50 MkII – 11-channel mode
+// Channel order verified against the Thomann manual (c_271625_v2_r2_de_online.pdf).
+// ---------------------------------------------------------------------------
+
+static SCANNER_CHANNELS: &[FixtureChannel] = &[
+    FixtureChannel::new8(0),  // Ch 1  – Pan        (0–180°, 8-bit)
+    FixtureChannel::new8(1),  // Ch 2  – Tilt       (0–60°,  8-bit)
+    FixtureChannel::new8(2),  // Ch 3  – Color wheel
+    FixtureChannel::new8(3),  // Ch 4  – Shutter / strobe (0–3=closed, 4–7=open, 8–215=strobe, 216+=open)
+    FixtureChannel::new8(4),  // Ch 5  – Dimmer     (0–100 %)
+    FixtureChannel::new8(5),  // Ch 6  – Gobo wheel
+    FixtureChannel::new8(6),  // Ch 7  – Gobo rotation (0–63=off, 64–147=+, 148–231=−)
+    FixtureChannel::new8(7),  // Ch 8  – Prism      (0–3=off, 4–127=+rot, 128–251=−rot, 252+=static)
+    FixtureChannel::new8(8),  // Ch 9  – Focus
+    FixtureChannel::new8(9),  // Ch 10 – Functions  (0–7=none, 8+=blackout-on-move/reset)
+    FixtureChannel::new8(10), // Ch 11 – Built-in programs (0–7=none)
+];
+
+/// Stage-left scanner (inside edge toward stage center).
+pub static SCANNER_1: Fixture = Fixture {
+    name: "Scanner 1",
+    universe: 1,
+    start_address: 160,
+    channels: SCANNER_CHANNELS,
+};
+/// Stage-right scanner (inside edge toward stage center).
+pub static SCANNER_2: Fixture = Fixture {
+    name: "Scanner 2",
+    universe: 1,
+    start_address: 180,
+    channels: SCANNER_CHANNELS,
+};
+
+// ---------------------------------------------------------------------------
 // All theme-controlled fixtures in one flat slice (for the engine).
 // Order here determines the order of `FixtureBinding`s in each theme.
 // ---------------------------------------------------------------------------
