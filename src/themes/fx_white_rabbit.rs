@@ -29,7 +29,7 @@ use crate::effect::{Effect, TickContext};
 use crate::fixtures;
 use crate::theme::{Binding, Theme, Transition};
 use crate::themes::{
-    SC_COLOR_WHITE, SC_FOCUS_MID, SC_GOBO_2, SC_GOBO_4, SC_GOBO_OPEN, SC_GOBOROT_MED_POS, SC_PRISM_OFF, SC_SHUTTER_CLOSED, SC_SHUTTER_OPEN, scanner_frame
+    SC_COLOR_WHITE, SC_FOCUS_MID, SC_GOBO_OPEN, SC_GOBOROT_MED_POS, SC_PRISM_OFF, SC_SHUTTER_OPEN, scanner_frame
 };
 
 
@@ -249,7 +249,7 @@ impl Effect for ScannerLighthouse {
                 * (std::f64::consts::TAU * ctx.time / SCAN_TILT_PERIOD_S).sin() as f32;
 
         // Beat-synced shutter stab: open for SCAN_STAB_DURATION_S on each downbeat.
-        let t_in_beat = ctx.time.rem_euclid(PAR_BEAT_PERIOD_S);
+        let _t_in_beat = ctx.time.rem_euclid(PAR_BEAT_PERIOD_S);
         //let shutter = if t_in_beat < SCAN_STAB_DURATION_S {
         //    SC_SHUTTER_OPEN
         //} else {

@@ -125,6 +125,39 @@ function applyState(state) {
   }
 
   if (state.universes) applyUniverses(state.universes);
+
+  applySpotify(state);
+}
+
+// ---------------------------------------------------------------------------
+// Spotify now-playing / connect
+// ---------------------------------------------------------------------------
+
+function applySpotify(state) {
+  const track   = document.getElementById('now-playing-track');
+  const connect = document.getElementById('spotify-connect');
+  const panel   = document.getElementById('spotify-panel');
+  const section = panel ? panel.closest('.section') : null;
+
+  const available = state.spotify_available !== undefined
+    ? !!state.spotify_available
+    : false;
+
+  // Hide the whole section when Spotify isn't configured on the server.
+  if (section) section.hidden = !available;
+  if (!available) return;
+
+  if (track) {
+    track.textContent = state.now_playing ? state.now_playing : '—';
+    track.classList.toggle('synced', !!state.spotify_controlling);
+  }
+  if (panel) {
+    panel.classList.toggle('controlling', !!state.spotify_controlling);
+  }
+  // Show the connect link only when configured but not yet linked.
+  if (connect) {
+    connect.hidden = !!state.spotify_connected;
+  }
 }
 
 function setFogSlider(sliderId, labelId, value, fmt) {

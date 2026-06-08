@@ -1,1 +1,5 @@
 /target
+
+# Local secrets / Spotify OAuth state
+.env
+spotify_token.txt

@@ -26,7 +26,7 @@ use crate::effect::{Effect, TickContext};
 use crate::fixtures;
 use crate::theme::{Binding, Theme, Transition};
 use crate::themes::{
-    SC_COLOR_RED, SC_COLOR_WHITE, SC_FOCUS_MID, SC_FUNC_NONE, SC_GOBO_OPEN,
+    SC_COLOR_RED, SC_FOCUS_MID, SC_FUNC_NONE, SC_GOBO_OPEN,
     SC_GOBOROT_NONE, SC_PROG_DMX, SC_PRISM_OFF, SC_SHUTTER_CLOSED, SC_SHUTTER_OPEN,
 };
 

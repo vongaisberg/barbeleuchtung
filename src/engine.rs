@@ -100,7 +100,13 @@ pub fn run(
 
             let cf = s.crossfade.clone();
             let fx_cf = s.fx_crossfade.clone();
-            let fx_show = s.fx_theme_started_at.elapsed().as_secs_f64();
+            // FX show clock: a Spotify-driven override wins when present so the
+            // timecoded show tracks the song's `progress_ms`; otherwise fall
+            // back to wall time since the scene was selected.
+            let fx_show = match &s.fx_show_clock {
+                Some(clock) => clock.now(),
+                None => s.fx_theme_started_at.elapsed().as_secs_f64(),
+            };
             let faders = s.fader_values.clone();
             let bo = s.blackout;
             let id = s.active_theme_id;

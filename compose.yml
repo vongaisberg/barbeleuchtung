@@ -7,4 +7,7 @@ services:
     network_mode: host
     environment:
       - TZ=Europe/Berlin
+    # Spotify credentials (and any overrides) are read from .env.
+    env_file:
+      - .env
     restart: unless-stopped

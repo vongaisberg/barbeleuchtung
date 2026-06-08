@@ -256,6 +256,18 @@ pub fn theme_names() -> Vec<&'static str> {
 
 // ─── FX theme registry ────────────────────────────────────────────────────
 
+/// FX theme registry index of the all-dark scene.
+pub const FX_OFF_ID: usize = 0;
+/// FX theme registry index of the timecoded "Would You" song show.
+/// Kept in sync with the order in [`all_fx_themes`] / [`fx_theme_names`].
+pub const FX_WOULD_YOU_ID: usize = 6;
+/// FX theme registry index of the timecoded "Prada" song show.
+/// Kept in sync with the order in [`all_fx_themes`] / [`fx_theme_names`].
+pub const FX_PRADA_ID: usize = 7;
+/// FX theme registry index of the timecoded "DJ Turn It Up" song show.
+/// Kept in sync with the order in [`all_fx_themes`] / [`fx_theme_names`].
+pub const FX_DJ_TURN_IT_UP_ID: usize = 8;
+
 pub fn all_fx_themes() -> Vec<Theme> {
     vec![
         fx_off::theme(),                    // 0 – all FX fixtures dark
@@ -264,7 +276,9 @@ pub fn all_fx_themes() -> Vec<Theme> {
         fx_white_rabbit::theme(),           // 3 – late night: digital rain + chaos beams + scanner lighthouse
         fx_off_with_their_heads::theme(),   // 4 – late night: hard red/white + scanner stabs
         fx_jabberwocky::theme(),            // 5 – late night: green/purple predator + scanner eyes
-        timecode::fx_prada_v2::theme(),              // 10 – timecoded Prada show v2
+        timecode::fx_would_you::theme(),    // 6 – timecoded "Would You" show (Spotify-synced)
+        timecode::fx_prada_v2::theme(),     // 7 – timecoded Prada show v2
+        timecode::fx_dj_turn_it_up::theme(),// 8 – timecoded "DJ Turn It Up" show
     ]
 }   
 
@@ -278,5 +292,6 @@ pub fn fx_theme_names() -> Vec<&'static str> {
         fx_jabberwocky::NAME,
         timecode::fx_would_you::NAME,
         timecode::fx_prada_v2::NAME,
+        timecode::fx_dj_turn_it_up::NAME,
     ]
 }

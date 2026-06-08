@@ -33,6 +33,14 @@ pub struct StateSnapshot {
     /// Patched universes + their current mute state, in `PATCHED_UNIVERSES`
     /// order.  The frontend renders one pill per entry in the status bar.
     universes: Vec<UniverseInfo>,
+    /// "Artist – Title" Spotify reports as currently playing, or `null`.
+    now_playing: Option<String>,
+    /// Whether the Spotify integration is configured at all.
+    spotify_available: bool,
+    /// Whether Spotify OAuth has been completed (a refresh token exists).
+    spotify_connected: bool,
+    /// True while the Spotify sync currently owns the FX bank.
+    spotify_controlling: bool,
 }
 
 /// One patched DMX universe as exposed to the frontend.
@@ -84,7 +92,20 @@ impl StateSnapshot {
             fog_duration_s: state.fog_duration_s,
             fog_level: state.fog_level,
             universes,
+            now_playing: state.now_playing.clone(),
+            spotify_available: state.spotify_available,
+            spotify_connected: state.spotify_connected,
+            spotify_controlling: state.spotify_controlling,
         }
+    }
+}
+
+/// Build a state snapshot and broadcast it to all connected WebSocket clients.
+/// Used by background tasks (e.g. the Spotify sync) to push updates.
+pub fn push_state(state: &AppState, broadcast_tx: &broadcast::Sender<String>) {
+    let snapshot = StateSnapshot::from_state(state);
+    if let Ok(json) = serde_json::to_string(&snapshot) {
+        let _ = broadcast_tx.send(json);
     }
 }
 
@@ -109,6 +130,8 @@ enum ClientMessage {
 pub struct WebData {
     pub state: Arc<Mutex<AppState>>,
     pub broadcast_tx: broadcast::Sender<String>,
+    /// Spotify client for the OAuth login routes; `None` if not configured.
+    pub spotify: Option<Arc<crate::spotify::SpotifyClient>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +160,68 @@ pub async fn app_js() -> impl Responder {
     HttpResponse::Ok()
         .content_type("application/javascript; charset=utf-8")
         .body(js)
+}
+
+// ---------------------------------------------------------------------------
+// Spotify OAuth routes
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct CallbackQuery {
+    code: Option<String>,
+    error: Option<String>,
+}
+
+/// Redirect the operator to Spotify's consent screen.
+pub async fn spotify_login(data: web::Data<WebData>) -> impl Responder {
+    match &data.spotify {
+        Some(client) => HttpResponse::Found()
+            .insert_header(("Location", client.authorize_url()))
+            .finish(),
+        None => HttpResponse::ServiceUnavailable()
+            .body("Spotify is not configured (set SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET)."),
+    }
+}
+
+/// OAuth redirect target: exchange the code for tokens, then bounce home.
+pub async fn spotify_callback(
+    data: web::Data<WebData>,
+    query: web::Query<CallbackQuery>,
+) -> impl Responder {
+    let Some(client) = &data.spotify else {
+        return HttpResponse::ServiceUnavailable().body("Spotify is not configured.");
+    };
+
+    if let Some(err) = &query.error {
+        return HttpResponse::BadRequest().body(format!("Spotify authorization denied: {err}"));
+    }
+
+    let Some(code) = &query.code else {
+        return HttpResponse::BadRequest().body("Missing authorization code.");
+    };
+
+    match client.exchange_code(code).await {
+        Ok(()) => {
+            {
+                let mut s = data.state.lock().unwrap();
+                s.spotify_connected = true;
+            }
+            // Refresh all clients so the UI drops the "Connect" prompt.
+            let s = data.state.lock().unwrap();
+            push_state(&s, &data.broadcast_tx);
+            drop(s);
+            // Bounce back to the app root. Relative "../" resolves against the
+            // callback path (/spotify/callback) to "/" — and stays correct when
+            // the app is reverse-proxied under a path prefix.
+            HttpResponse::Found()
+                .insert_header(("Location", "../"))
+                .finish()
+        }
+        Err(e) => {
+            log::warn!("Spotify code exchange failed: {e}");
+            HttpResponse::BadGateway().body(format!("Spotify token exchange failed: {e}"))
+        }
+    }
 }
 
 /// WebSocket upgrade handler.
@@ -226,6 +311,10 @@ fn handle_client_message(
                     Transition::Crossfade { duration_ms } => Some(duration_ms),
                     Transition::Instant => None,
                 };
+                // A manual selection overrides any Spotify-driven sync until
+                // the next poll re-evaluates the currently playing track.
+                s.fx_show_clock = None;
+                s.spotify_controlling = false;
                 s.request_fx_theme(id, duration_ms);
                 log::info!("FX theme changed to {id}");
             } else {

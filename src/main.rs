@@ -5,6 +5,7 @@ mod engine;
 mod fixture;
 mod fixtures;
 mod scheduler;
+mod spotify;
 mod state;
 mod theme;
 mod themes;
@@ -16,7 +17,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use actix_web::{web as aweb, App, HttpServer};
 use tokio::sync::broadcast;
 
-use artnet::{run_discovery, SubscriberTable};
+use artnet::SubscriberTable;
 use scheduler::complete_schedule;
 use state::AppState;
 use web::WebData;
@@ -43,7 +44,7 @@ async fn main() -> std::io::Result<()> {
     let artnet_socket_engine = std::net::UdpSocket::bind("0.0.0.0:0")?;
     artnet_socket_engine.set_broadcast(true)?;
     let subscribers = Arc::new(RwLock::new(SubscriberTable::new()));
-    let broadcast_addr = ("10.255.255.255", ARTNET_PORT)
+    let _broadcast_addr = ("10.255.255.255", ARTNET_PORT)
         .to_socket_addrs()?
         .next()
         .expect("failed to resolve Art-Net broadcast address");
@@ -73,9 +74,13 @@ async fn main() -> std::io::Result<()> {
             .expect("failed to spawn DMX engine thread");
     }
 
+    // Start the Spotify integration (no-op if not configured via env).
+    let spotify = spotify::spawn(app_state.clone(), broadcast_tx.clone());
+
     let web_data = aweb::Data::new(WebData {
         state: app_state,
         broadcast_tx,
+        spotify,
     });
 
     log::info!("Starting web server on http://{BIND_ADDR}");
@@ -87,6 +92,8 @@ async fn main() -> std::io::Result<()> {
             .route("/style.css", aweb::get().to(web::style_css))
             .route("/app.js",    aweb::get().to(web::app_js))
             .route("/ws",               aweb::get().to(web::websocket))
+            .route("/spotify/login",    aweb::get().to(web::spotify_login))
+            .route("/spotify/callback", aweb::get().to(web::spotify_callback))
     })
     .bind(BIND_ADDR)?
     .run()

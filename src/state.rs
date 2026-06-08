@@ -28,6 +28,43 @@ impl CrossfadeState {
     }
 }
 
+/// An externally-driven clock for the FX show's `show_time`.
+///
+/// Used to lock a timecoded FX show to an outside transport (e.g. Spotify's
+/// `progress_ms`).  Rather than store the position only at poll time, we keep
+/// an *anchor*: the show position `anchor_secs` that was true at the local
+/// instant `anchor_at`.  While `playing`, the current position extrapolates
+/// forward from that anchor using the local monotonic clock, so playback stays
+/// smooth at 40 Hz between the (much sparser) polls.  Each poll re-anchors,
+/// correcting any drift.
+#[derive(Clone, Debug)]
+pub struct ShowClock {
+    /// Show position, in seconds, that was true at `anchor_at`.
+    pub anchor_secs: f64,
+    /// Local monotonic instant the anchor was captured.
+    pub anchor_at: Instant,
+    /// Whether the transport is currently advancing (paused → frozen).
+    pub playing: bool,
+}
+
+impl ShowClock {
+    /// Current show position in seconds, extrapolated from the anchor.
+    pub fn now(&self) -> f64 {
+        self.at(Instant::now())
+    }
+
+    /// Show position this clock would report at an arbitrary instant `t`.
+    /// Used to compare our extrapolated position against a freshly fetched
+    /// transport position sampled at the same instant.
+    pub fn at(&self, t: Instant) -> f64 {
+        if self.playing {
+            self.anchor_secs + t.saturating_duration_since(self.anchor_at).as_secs_f64()
+        } else {
+            self.anchor_secs
+        }
+    }
+}
+
 /// Shared application state, protected externally by `Arc<Mutex<AppState>>`.
 pub struct AppState {
     /// Index into the theme registry of the currently active theme.
@@ -61,6 +98,24 @@ pub struct AppState {
     /// frames – that is what `blackout` does).  Length always equals
     /// `engine::NUM_UNIVERSES`.
     pub universe_muted: Vec<bool>,
+    /// When `Some`, overrides the FX bank's `show_time` with an externally
+    /// driven clock (Spotify playback position).  When `None`, the FX show
+    /// runs from `fx_theme_started_at` as usual.
+    pub fx_show_clock: Option<ShowClock>,
+    /// Human-readable "Artist – Title" of the track Spotify reports as
+    /// currently playing, or `None` when nothing is playing / Spotify is idle.
+    pub now_playing: Option<String>,
+    /// Whether the Spotify integration is configured at all (client id/secret
+    /// present).  When false the UI hides all Spotify controls.
+    pub spotify_available: bool,
+    /// Whether a Spotify refresh token is available (i.e. the operator has
+    /// completed the OAuth login at least once).  Surfaced to the UI so it can
+    /// show a "Connect Spotify" link when needed.
+    pub spotify_connected: bool,
+    /// True while the Spotify sync currently owns the FX bank (because the
+    /// matched song is playing).  Lets us hand control back exactly once when
+    /// the song ends instead of fighting manual scene selection.
+    pub spotify_controlling: bool,
 }
 
 impl AppState {
@@ -78,6 +133,11 @@ impl AppState {
             fog_duration_s: 5.0,
             fog_level: 0.05,
             universe_muted: vec![false; NUM_UNIVERSES],
+            fx_show_clock: None,
+            now_playing: None,
+            spotify_available: false,
+            spotify_connected: false,
+            spotify_controlling: false,
         }
     }
 
