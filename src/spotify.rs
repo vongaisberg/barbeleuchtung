@@ -483,7 +483,18 @@ fn apply_sample(
         _ => None,
     };
 
-
+    // Log every fetch, with the clock-vs-Spotify offset when we have one.
+    let track_desc = label.as_deref().unwrap_or("(nothing playing)");
+    match offset_secs {
+        Some(off) => log::info!(
+            "Spotify fetch: \"{track_desc}\" playing={playing} spotify={spotify_secs:.3}s \
+             clock-vs-spotify offset={off:+.3}s"
+        ),
+        None => log::info!(
+            "Spotify fetch: \"{track_desc}\" playing={playing} spotify={spotify_secs:.3}s \
+             (no synced clock)"
+        ),
+    }
 
     s.now_playing = label;
 
@@ -501,11 +512,13 @@ fn apply_sample(
         }
         s.spotify_controlling = true;
     } else if s.spotify_controlling {
-        // The song ended or changed: release the FX bank exactly once.
-        log::info!("Spotify: matched song stopped – releasing FX bank");
+        // The song ended or changed: release the FX bank exactly once, handing
+        // it back to whatever the time-of-day schedule dictates (not blackout).
+        let target = crate::scheduler::current_scheduled_fx_theme_id().unwrap_or(FX_OFF_ID);
+        log::info!("Spotify: matched song stopped – returning FX bank to scheduled show {target}");
         s.fx_show_clock = None;
         s.spotify_controlling = false;
-        s.request_fx_theme(FX_OFF_ID, None);
+        s.request_fx_theme(target, None);
     }
 
     let changed = s.now_playing != prev_label || s.spotify_controlling != prev_controlling;

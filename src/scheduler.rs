@@ -50,6 +50,31 @@ impl Scheduler {
         Self::new(entries)
     }
 
+    /// Return the FX theme id the schedule dictates at wall-clock `now`.
+    ///
+    /// Unlike [`tick`](Self::tick) (which is edge-triggered on boundary
+    /// crossings), this resolves the *currently in-effect* scheduled FX theme:
+    /// the most recent entry – cyclically over the day, so before the first
+    /// entry it wraps to the last one – that carries an `fx_theme_id`.
+    pub fn scheduled_fx_theme_id(&self, now: NaiveTime) -> Option<usize> {
+        let mut fx_entries: Vec<&ScheduleEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.fx_theme_id.is_some())
+            .collect();
+        if fx_entries.is_empty() {
+            return None;
+        }
+        fx_entries.sort_by_key(|e| e.time);
+
+        // Latest entry whose time is at or before `now`.
+        let chosen = fx_entries.iter().filter(|e| e.time <= now).last().copied();
+        // If none have fired yet today, the active one is the previous day's
+        // last entry (wrap around midnight).
+        let chosen = chosen.unwrap_or_else(|| fx_entries.last().copied().unwrap());
+        chosen.fx_theme_id
+    }
+
     /// Call once per tick to check for crossed schedule entries.
     pub fn tick(&self, prev: NaiveTime, current: NaiveTime, state: &mut AppState) {
         if !self.enabled || self.entries.is_empty() {
@@ -199,4 +224,12 @@ pub fn complete_schedule() -> Scheduler {
     entries.sort_by_key(|e| e.time);
     
     Scheduler::new(entries)
+}
+
+/// FX theme id the standard bar schedule dictates *right now* (local time).
+/// Convenience wrapper around [`Scheduler::scheduled_fx_theme_id`] used by
+/// callers outside the engine thread (e.g. the Spotify sync) that don't hold a
+/// `Scheduler` instance.
+pub fn current_scheduled_fx_theme_id() -> Option<usize> {
+    complete_schedule().scheduled_fx_theme_id(chrono::Local::now().time())
 }
