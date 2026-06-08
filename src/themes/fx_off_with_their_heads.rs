@@ -34,7 +34,7 @@ pub const NAME: &str = "Off With Their Heads!";
 
 // ─── Shared tempo parameters ─────────────────────────────────────────────────
 
-const BPM: f64 = 120.0;
+const BPM: f64 = 125.0;
 const BEAT_S: f64 = 60.0 / BPM;       // 0.5 s per beat
 const BAR_S: f64 = BEAT_S * 4.0;      // 2.0 s per bar
 
@@ -175,9 +175,9 @@ const SCAN_PAN_CENTER_BOTH: f32 = 0.50; // Both aimed center (for X sweep)
 
 const SCAN_TILT_STAGE: f32  = 0.50; // mid-room beam
 const SCAN_TILT_UP: f32     = 0.80; // near-ceiling
-const SCAN_DIMMER: f32      = 0.85;
+const SCAN_DIMMER: f32      = 1.0;
 /// How long a shutter stab stays open (s).
-const SCAN_STAB_S: f64 = 0.05;
+const SCAN_STAB_S: f64 = 0.1;
 /// Cross-beam sweep: how long (s) pan travels from splay to center during X.
 const SCAN_CROSS_DURATION_S: f64 = 0.25;
 
@@ -207,7 +207,7 @@ impl Effect for HeadsScanner {
             let frac = (t_cross / SCAN_CROSS_DURATION_S) as f32;
             let pan_from = if self.reverse { SCAN_PAN_SPLAY_R } else { SCAN_PAN_SPLAY_L };
             let pan = pan_from + (SCAN_PAN_CENTER_BOTH - pan_from) * frac;
-            (pan, SCAN_TILT_STAGE, SC_COLOR_WHITE)
+            (pan, SCAN_TILT_STAGE, SC_COLOR_RED)
         } else {
             // Normal beat-step logic – skip to a preset on each beat.
             let (pan, tilt) = match phrase_beat % 4 {

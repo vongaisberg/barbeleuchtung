@@ -248,7 +248,7 @@ fn handle_client_message(
         ClientMessage::FogSettings { interval_min, duration_s, level } => {
             s.fog_interval_min = interval_min.clamp(1.0, 30.0);
             s.fog_duration_s   = duration_s.clamp(5.0, 25.0);
-            s.fog_level        = level.clamp(0.20, 0.70);
+            s.fog_level        = level.clamp(0.01, 0.30);
         }
         ClientMessage::UniverseOutput { universe, muted } => {
             let idx = universe as usize;

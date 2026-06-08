@@ -8,15 +8,15 @@
 //! Menacing but beautiful. Works as a wild card late-night scene when people
 //! want something unsettling rather than a straight dance loop.
 //!
-//! - **RootPars**: Slow green↔purple crossfade. Occasional random-ish sparkle
-//!   strobe hits seeded from the golden angle (never perfectly periodic).
+//! - **RootPars**: Slow green↔purple crossfade with a rare, soft brightness
+//!   swell seeded from the golden angle (no hard strobe – just a gentle lift).
 //!
 //! - **PixStrobes**: Per-pixel green/purple twinkle using `organic_lfo`.
-//!   Every ≈ 18 s a "lightning" flash fires the full CW blinder white for
-//!   ≈ 80 ms, then decays.
+//!   Every ≈ 45 s a soft white "lightning" swell rises and decays on the CW
+//!   blinder – present but no longer a sharp flash.
 //!
-//! - **QuadPhases**: Fast rotation. Color wheel slowly walking green→blue over
-//!   90 s so the beams feel alive.
+//! - **QuadPhases**: Medium rotation. Color wheel slowly walking green→blue over
+//!   90 s so the beams feel alive without being frantic.
 //!
 //! - **Scanners**: "Searchlight Eyes" – slow drift with sudden snaps to new
 //!   positions, independent golden-angle phase offsets between the two units.
@@ -59,13 +59,14 @@ impl Effect for JabberRootPar {
             out[i] = PAR_GREEN[i] * (1.0 - blend) + PAR_PURPLE[i] * blend;
         }
 
-        // Sparkle: occasional single-frame strobe hit, organically timed.
-        // shaped_lfo with a very sharp k value gives rare full spikes.
-        let sparkle = shaped_lfo(ctx.time, (self.phase_offset * 10.0) as usize, 11.3, 6.0);
-        // Only fire when near the spike peak (top 5 %).
-        if sparkle > 0.95 {
-            out[0] = 1.0; // dimmer full
-            out[1] = 0.4; // built-in strobe channel at moderate speed
+        // Soft swell: a rare, gentle brightness lift (no hard strobe channel).
+        // Lower frequency + higher threshold make the swells infrequent, and we
+        // only nudge the dimmer instead of slamming it + firing the strobe.
+        let sparkle = shaped_lfo(ctx.time, (self.phase_offset * 10.0) as usize, 3.0, 5.0);
+        if sparkle > 0.97 {
+            // Ease the dimmer up toward a soft peak rather than a hit.
+            let lift = (sparkle - 0.97) / 0.03; // 0→1 across the top of the spike
+            out[0] = PAR_DIMMER + (0.70 - PAR_DIMMER) * lift;
         }
 
         out.to_vec()
@@ -79,23 +80,27 @@ const PIX_BG: f32 = 0.02;
 /// Peak twinkle brightness per pixel.
 const PIX_PEAK: f32 = 0.40;
 const PIX_LFO_FREQ: f64 = 0.18; // slow organic breathing
-
-/// Lightning: fires with a period of ≈ 18 s; CW blinder peak intensity.
-const LIGHTNING_PERIOD_S: f64 = 18.3; // slightly irrational to avoid grid feel
-const LIGHTNING_RISE_S: f64  = 0.02;
-const LIGHTNING_DECAY_S: f64 = 0.08;
-const LIGHTNING_K: f64 = 35.0;
+ 
+/// Lightning: a soft white swell on the CW blinder, ≈ every 45 s.
+/// Rarer, lower-peak, and slower-decaying than a sharp flash so it reads as a
+/// gentle pulse of light rather than a strobe hit.
+const LIGHTNING_PERIOD_S: f64 = 45.0; // far rarer than before
+const LIGHTNING_RISE_S: f64  = 0.20;  // gentle ramp-up
+const LIGHTNING_DECAY_S: f64 = 0.60;  // slow fade-out
+const LIGHTNING_K: f64 = 7.0;         // softer decay curve
+const LIGHTNING_PEAK: f32 = 0.45;     // never full white
 
 fn lightning_cw(t: f64) -> f32 {
     let t_cycle = t.rem_euclid(LIGHTNING_PERIOD_S);
-    if t_cycle < LIGHTNING_RISE_S {
+    let raw = if t_cycle < LIGHTNING_RISE_S {
         (t_cycle / LIGHTNING_RISE_S) as f32
     } else if t_cycle < LIGHTNING_RISE_S + LIGHTNING_DECAY_S {
         let decay_t = t_cycle - LIGHTNING_RISE_S;
         (-LIGHTNING_K * decay_t).exp() as f32
     } else {
         0.0
-    }
+    };
+    raw * LIGHTNING_PEAK
 }
 
 struct JabberPixStrobe {
@@ -111,7 +116,7 @@ impl Effect for JabberPixStrobe {
         // CW blinder: lightning flash (channels 4–7).
         let cw = lightning_cw(ctx.time);
         for i in 4..8 { out[i] = cw; }
-
+ 
         // RGB pixels: organic green/purple twinkle.
         for pixel in 0..8usize {
             let lfo = organic_lfo(ctx.time, self.pixel_seed + pixel, PIX_LFO_FREQ);
@@ -139,7 +144,7 @@ impl Effect for JabberPixStrobe {
 // ─── QuadPhase: fast rotation, slow color walk ───────────────────────────────
 
 const QP_SHUTTER_OPEN: f32  = 1.0;
-const QP_ROTATION_FAST: f32 = 0.72;
+const QP_ROTATION_FAST: f32 = 0.45; // medium spin – calmer than before
 const QP_COLOR_PERIOD_S: f64 = 90.0; // full color-wheel sweep in 90 s
 
 struct JabberQuadPhase;

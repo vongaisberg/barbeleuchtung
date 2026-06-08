@@ -29,8 +29,7 @@ use crate::effect::{Effect, TickContext};
 use crate::fixtures;
 use crate::theme::{Binding, Theme, Transition};
 use crate::themes::{
-    scanner_frame, SC_COLOR_GREEN, SC_FOCUS_MID, SC_GOBO_4, SC_GOBO_2, SC_GOBOROT_MED_POS,
-    SC_PRISM_OFF, SC_SHUTTER_CLOSED, SC_SHUTTER_OPEN,
+    SC_COLOR_WHITE, SC_FOCUS_MID, SC_GOBO_2, SC_GOBO_4, SC_GOBO_OPEN, SC_GOBOROT_MED_POS, SC_PRISM_OFF, SC_SHUTTER_CLOSED, SC_SHUTTER_OPEN, scanner_frame
 };
 
 
@@ -260,10 +259,10 @@ impl Effect for ScannerLighthouse {
         scanner_frame(
             pan,
             tilt,
-            SC_COLOR_GREEN,
+            SC_COLOR_WHITE,
             shutter,
             SCAN_DIMMER,
-            SC_GOBO_2,          // dotted/breakup gobo for matrix-rain feel
+            SC_GOBO_OPEN,
             SC_GOBOROT_MED_POS, // slow spin keeps the breakup pattern moving
             SC_PRISM_OFF,       
             SC_FOCUS_MID,

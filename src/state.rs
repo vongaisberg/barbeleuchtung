@@ -38,6 +38,10 @@ pub struct AppState {
     pub active_fx_theme_id: usize,
     /// If an FX crossfade is in progress this holds its descriptor.
     pub fx_crossfade: Option<CrossfadeState>,
+    /// Wall-clock instant the active FX theme became active.  Drives
+    /// `TickContext::show_time` so timecoded FX shows start from ~0 when
+    /// selected.  Reset whenever `active_fx_theme_id` changes.
+    pub fx_theme_started_at: Instant,
     /// One value per fader, in `0.0..=1.0`.
     /// Length must equal `fixtures::FADER_FIXTURES.len()`.
     pub fader_values: Vec<f32>,
@@ -49,7 +53,7 @@ pub struct AppState {
     pub fog_interval_min: f32,
     /// Seconds the pump runs per burst (y).  Range: 1–30.
     pub fog_duration_s: f32,
-    /// Pump output level (z), in `0.0..=1.0`.  Range: 0.1–1.0.
+    /// Pump output level (z), in `0.0..=1.0`.  Range: 0.01–0.30.
     pub fog_level: f32,
     /// Per-universe DMX output mute, indexed by Art-Net universe number.
     /// When `universe_muted[uni]` is `true`, the engine skips sending the
@@ -66,12 +70,13 @@ impl AppState {
             crossfade: None,
             active_fx_theme_id: 0,
             fx_crossfade: None,
+            fx_theme_started_at: Instant::now(),
             fader_values: vec![0.0; fixtures::FADER_FIXTURES.len()],
             blackout: false,
             fog_enabled: false,
-            fog_interval_min: 5.0,
+            fog_interval_min: 1.0,
             fog_duration_s: 5.0,
-            fog_level: 0.5,
+            fog_level: 0.05,
             universe_muted: vec![false; NUM_UNIVERSES],
         }
     }
@@ -137,6 +142,7 @@ impl AppState {
             _ => {
                 self.active_fx_theme_id = new_id;
                 self.fx_crossfade = None;
+                self.fx_theme_started_at = Instant::now();
             }
         }
     }
@@ -153,6 +159,7 @@ impl AppState {
             if cf.is_complete() {
                 self.active_fx_theme_id = cf.to_theme_id;
                 self.fx_crossfade = None;
+                self.fx_theme_started_at = Instant::now();
             }
         }
     }

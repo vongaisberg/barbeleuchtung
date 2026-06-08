@@ -18,6 +18,7 @@ pub mod fx_cheshire_grin;
 pub mod fx_white_rabbit;
 pub mod fx_off_with_their_heads;
 pub mod fx_jabberwocky;
+pub mod timecode;
 
 use crate::theme::Theme;
 
@@ -263,8 +264,9 @@ pub fn all_fx_themes() -> Vec<Theme> {
         fx_white_rabbit::theme(),           // 3 – late night: digital rain + chaos beams + scanner lighthouse
         fx_off_with_their_heads::theme(),   // 4 – late night: hard red/white + scanner stabs
         fx_jabberwocky::theme(),            // 5 – late night: green/purple predator + scanner eyes
+        timecode::fx_prada_v2::theme(),              // 10 – timecoded Prada show v2
     ]
-}
+}   
 
 pub fn fx_theme_names() -> Vec<&'static str> {
     vec![
@@ -274,5 +276,7 @@ pub fn fx_theme_names() -> Vec<&'static str> {
         fx_white_rabbit::NAME,
         fx_off_with_their_heads::NAME,
         fx_jabberwocky::NAME,
+        timecode::fx_would_you::NAME,
+        timecode::fx_prada_v2::NAME,
     ]
 }

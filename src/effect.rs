@@ -9,6 +9,12 @@ pub struct TickContext {
     pub tick: u64,
     /// Seconds elapsed since engine start (f64 for smooth animations).
     pub time: f64,
+    /// Seconds elapsed since the currently-active FX theme was activated.
+    /// For the Decke bank this mirrors `time`; for the FX bank it is reset to
+    /// ~0 each time a new FX scene is selected.  Timecoded shows key off this
+    /// so playback can be started in sync with scene activation rather than
+    /// engine boot.
+    pub show_time: f64,
     /// Current wall-clock time for time-of-day effects.
     pub wall_clock: NaiveTime,
     /// Delta time in seconds since the last tick.
