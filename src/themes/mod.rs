@@ -267,6 +267,9 @@ pub const FX_PRADA_ID: usize = 7;
 /// FX theme registry index of the timecoded "DJ Turn It Up" song show.
 /// Kept in sync with the order in [`all_fx_themes`] / [`fx_theme_names`].
 pub const FX_DJ_TURN_IT_UP_ID: usize = 8;
+/// FX theme registry index of the timecoded "Schrei nach Liebe" song show.
+/// Kept in sync with the order in [`all_fx_themes`] / [`fx_theme_names`].
+pub const FX_SCHREI_NACH_LIEBE_ID: usize = 9;
 
 pub fn all_fx_themes() -> Vec<Theme> {
     vec![
@@ -279,6 +282,7 @@ pub fn all_fx_themes() -> Vec<Theme> {
         timecode::fx_would_you::theme(),    // 6 – timecoded "Would You" show (Spotify-synced)
         timecode::fx_prada_v2::theme(),     // 7 – timecoded Prada show v2
         timecode::fx_dj_turn_it_up::theme(),// 8 – timecoded "DJ Turn It Up" show
+        timecode::fx_schrei_nach_liebe::theme(), // 9 – timecoded "Schrei nach Liebe" show
     ]
 }   
 
@@ -293,5 +297,6 @@ pub fn fx_theme_names() -> Vec<&'static str> {
         timecode::fx_would_you::NAME,
         timecode::fx_prada_v2::NAME,
         timecode::fx_dj_turn_it_up::NAME,
+        timecode::fx_schrei_nach_liebe::NAME,
     ]
 }

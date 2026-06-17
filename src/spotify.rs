@@ -15,6 +15,7 @@
 //! | `SPOTIFY_WOULD_YOU_MATCH`| no       | `would you`                                  |
 //! | `SPOTIFY_PRADA_MATCH`    | no       | `prada`                                      |
 //! | `SPOTIFY_DJ_TURN_IT_UP_MATCH`| no   | `turn it up`                                 |
+//! | `SPOTIFY_SCHREI_NACH_LIEBE_MATCH`| no | `schrei nach liebe`                        |
 //!
 //! If the client id/secret are unset the integration silently disables itself
 //! and the rest of the app runs unchanged.
@@ -41,7 +42,9 @@ use serde::Deserialize;
 use tokio::sync::broadcast;
 
 use crate::state::{AppState, ShowClock};
-use crate::themes::{FX_DJ_TURN_IT_UP_ID, FX_OFF_ID, FX_PRADA_ID, FX_WOULD_YOU_ID};
+use crate::themes::{
+    FX_DJ_TURN_IT_UP_ID, FX_OFF_ID, FX_PRADA_ID, FX_SCHREI_NACH_LIEBE_ID, FX_WOULD_YOU_ID,
+};
 
 const TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
 const AUTHORIZE_URL: &str = "https://accounts.spotify.com/authorize";
@@ -50,6 +53,13 @@ const SCOPE: &str = "user-read-currently-playing";
 
 /// How often we poll Spotify and re-anchor the show clock.
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Fallback back-off when a 429 response omits a `Retry-After` header.
+const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(5);
+
+/// Extra margin added on top of `Retry-After` so we resume just *after* the
+/// window, never a hair early (which would earn another 429).
+const RETRY_MARGIN: Duration = Duration::from_millis(500);
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -110,6 +120,12 @@ impl Config {
         if !dj_turn_it_up.is_empty() {
             matches.push((dj_turn_it_up, FX_DJ_TURN_IT_UP_ID));
         }
+        let schrei_nach_liebe = std::env::var("SPOTIFY_SCHREI_NACH_LIEBE_MATCH")
+            .unwrap_or_else(|_| "schrei nach liebe".to_string())
+            .to_lowercase();
+        if !schrei_nach_liebe.is_empty() {
+            matches.push((schrei_nach_liebe, FX_SCHREI_NACH_LIEBE_ID));
+        }
 
         Some(Self {
             client_id,
@@ -147,6 +163,14 @@ pub struct SpotifyClient {
 struct Sample {
     data: Option<CurrentlyPlaying>,
     sampled_at: Instant,
+}
+
+/// Why a `currently-playing` fetch failed.
+enum FetchError {
+    /// HTTP 429 – includes the `Retry-After` delay Spotify asked us to wait.
+    RateLimited(Option<Duration>),
+    /// Any other failure (network, auth, decode, unexpected status).
+    Other(String),
 }
 
 impl SpotifyClient {
@@ -287,8 +311,11 @@ impl SpotifyClient {
 
     /// Fetch the currently playing item, timing the request so we can place the
     /// reported `progress_ms` at the midpoint of the round-trip.
-    async fn currently_playing(&self) -> Result<Sample, String> {
-        let token = self.ensure_access_token().await?;
+    async fn currently_playing(&self) -> Result<Sample, FetchError> {
+        let token = self
+            .ensure_access_token()
+            .await
+            .map_err(FetchError::Other)?;
 
         let t0 = Instant::now();
         let resp = self
@@ -297,7 +324,7 @@ impl SpotifyClient {
             .bearer_auth(&token)
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| FetchError::Other(e.to_string()))?;
         let t1 = Instant::now();
         let sampled_at = t0 + (t1 - t0) / 2;
 
@@ -308,7 +335,10 @@ impl SpotifyClient {
                 sampled_at,
             }),
             200 => {
-                let data: CurrentlyPlaying = resp.json().await.map_err(|e| e.to_string())?;
+                let data: CurrentlyPlaying = resp
+                    .json()
+                    .await
+                    .map_err(|e| FetchError::Other(e.to_string()))?;
                 Ok(Sample {
                     data: Some(data),
                     sampled_at,
@@ -316,10 +346,24 @@ impl SpotifyClient {
             }
             401 => {
                 self.invalidate_access_token();
-                Err("401 Unauthorized (token will be refreshed next poll)".to_string())
+                Err(FetchError::Other(
+                    "401 Unauthorized (token will be refreshed next poll)".to_string(),
+                ))
             }
-            429 => Err("429 rate limited by Spotify".to_string()),
-            other => Err(format!("unexpected status {other} from Spotify")),
+            429 => {
+                // Spotify returns a `Retry-After` header (whole seconds) telling
+                // us how long to wait before the next request.
+                let retry_after = resp
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .map(Duration::from_secs);
+                Err(FetchError::RateLimited(retry_after))
+            }
+            other => Err(FetchError::Other(format!(
+                "unexpected status {other} from Spotify"
+            ))),
         }
     }
 }
@@ -415,7 +459,20 @@ async fn poll_loop(
 
         match client.currently_playing().await {
             Ok(sample) => apply_sample(&client, &state, &broadcast_tx, sample),
-            Err(e) => log::warn!("Spotify poll failed: {e}"),
+            Err(FetchError::RateLimited(retry_after)) => {
+                // Honour Spotify's Retry-After: log it and sleep that long
+                // (plus a small margin) before the next poll.
+                let wait = retry_after.unwrap_or(DEFAULT_RETRY_AFTER) + RETRY_MARGIN;
+                log::warn!(
+                    "Spotify 429 rate limited: Retry-After = {} – backing off {:.1}s",
+                    retry_after
+                        .map(|d| format!("{}s", d.as_secs()))
+                        .unwrap_or_else(|| "(absent)".to_string()),
+                    wait.as_secs_f64()
+                );
+                tokio::time::sleep(wait).await;
+            }
+            Err(FetchError::Other(e)) => log::warn!("Spotify poll failed: {e}"),
         }
     }
 }
