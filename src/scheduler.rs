@@ -201,11 +201,19 @@ pub fn complete_schedule() -> Scheduler {
             fader_values: None,
             fog_enabled: None,
         },
-        // 21:00 – Cheshire Grin starts, fans turn on
+        // 21:00 – Cheshire Grin starts
         ScheduleEntry {
             time: NaiveTime::from_hms_opt(21, 0, 0).unwrap(),
             theme_id: Some(7), // stained glass
             fx_theme_id: Some(2), // fx_cheshire_grin
+            fader_values: None,
+            fog_enabled: None,
+        },
+        // 22:00 – Keep current theme, fans on
+        ScheduleEntry {
+            time: NaiveTime::from_hms_opt(22, 0, 0).unwrap(),
+            theme_id: None, // keep current theme
+            fx_theme_id: None, // fx_cheshire_grin
             fader_values: Some(fans_on.clone()),
             fog_enabled: None,
         },
