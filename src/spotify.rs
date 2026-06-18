@@ -52,7 +52,7 @@ const CURRENTLY_PLAYING_URL: &str = "https://api.spotify.com/v1/me/player/curren
 const SCOPE: &str = "user-read-currently-playing";
 
 /// How often we poll Spotify and re-anchor the show clock.
-const POLL_INTERVAL: Duration = Duration::from_secs(1);
+const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Fallback back-off when a 429 response omits a `Retry-After` header.
 const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(5);
