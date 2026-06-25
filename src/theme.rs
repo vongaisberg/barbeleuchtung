@@ -100,3 +100,13 @@ pub fn all_fx_themes() -> Vec<Theme> {
 pub fn fx_theme_names() -> Vec<&'static str> {
     crate::themes::fx_theme_names()
 }
+
+/// All reactive bank themes, in the order their IDs are assigned.
+pub fn all_reactive_themes() -> Vec<Theme> {
+    crate::themes::all_reactive_themes()
+}
+
+/// Display names for the reactive bank (same order as `all_reactive_themes()`).
+pub fn reactive_theme_names() -> Vec<&'static str> {
+    crate::themes::reactive_theme_names()
+}

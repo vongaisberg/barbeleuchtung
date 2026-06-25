@@ -18,6 +18,7 @@ pub mod fx_cheshire_grin;
 pub mod fx_white_rabbit;
 pub mod fx_off_with_their_heads;
 pub mod fx_jabberwocky;
+pub mod reactive;
 pub mod timecode;
 
 use crate::theme::Theme;
@@ -298,5 +299,31 @@ pub fn fx_theme_names() -> Vec<&'static str> {
         timecode::fx_prada_v2::NAME,
         timecode::fx_dj_turn_it_up::NAME,
         timecode::fx_schrei_nach_liebe::NAME,
+    ]
+}
+
+// ─── Reactive theme registry ──────────────────────────────────────────────
+//
+// Audio-reactive bank: generative scenes driven live by `ctx.audio`. Index 0
+// is always the all-dark "off" scene so the bank stays silent until selected.
+// (Manual override looks; Auto renders the generative engine instead.)
+
+pub fn all_reactive_themes() -> Vec<Theme> {
+    vec![
+        reactive::off(),    // 0 – all FX fixtures dark
+        reactive::dark(),   // 1 – sparse / moody
+        reactive::groove(), // 2 – colourful, movement-forward
+        reactive::club(),   // 3 – full-energy workhorse
+        reactive::strobe(), // 4 – white-heavy peak look
+    ]
+}
+
+pub fn reactive_theme_names() -> Vec<&'static str> {
+    vec![
+        reactive::OFF_NAME,
+        reactive::DARK_NAME,
+        reactive::GROOVE_NAME,
+        reactive::CLUB_NAME,
+        reactive::STROBE_NAME,
     ]
 }

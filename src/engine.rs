@@ -9,7 +9,8 @@ use crate::fixture::{render_fixture, UniverseBuffer};
 use crate::fixtures;
 use crate::scheduler::Scheduler;
 use crate::state::AppState;
-use crate::theme::{all_fx_themes, all_themes, Binding};
+use crate::state::ReactiveLive;
+use crate::theme::{all_fx_themes, all_reactive_themes, all_themes, Binding};
 
 /// Target tick rate in Hz.
 pub const TICK_RATE_HZ: u64 = 40;
@@ -44,6 +45,9 @@ pub fn run(
     scheduler: Option<Scheduler>,
     socket: std::net::UdpSocket,
     subscribers: Arc<std::sync::RwLock<SubscriberTable>>,
+    audio: crate::audio::FeatureHandle,
+    frame: crate::viz::FrameHandle,
+    reactive_live: Arc<ReactiveLive>,
 ) {
     let mut sender = match ArtNetSender::new(socket, subscribers) {
         Ok(s) => s,
@@ -61,6 +65,9 @@ pub fn run(
     let mut tick: u64 = 0;
     let mut prev_wall = Local::now().time();
 
+    // Stateful generative Director for the reactive bank's Auto mode.
+    let mut director = crate::themes::reactive::Director::new();
+
     // Build the full theme list once. Effects are rebuilt each tick by calling
     // `all_themes()` freshly – this re-creates effect objects but is cheap
     // since all themes are just small Rust structs on the stack.
@@ -74,20 +81,14 @@ pub fn run(
         let dt = TICK_DURATION.as_secs_f64();
         let wall = Local::now().time();
 
-        // Build a base context; slot is overridden per-fixture inside group
-        // bindings.  For single-fixture bindings it stays as SlotContext::single().
-        let ctx = TickContext {
-            tick,
-            time: elapsed,
-            wall_clock: wall,
-            dt,
-            slot: 0,
-            show_time: elapsed,
-        };
+        // Latest audio analysis: one lock-free atomic load, shared into the
+        // context for the reactive bank (cheap Arc clone per fixture).
+        let audio_now = audio.load_full();
 
         // --- Read & advance shared state (lock held as briefly as possible) ---
         let (active_id, crossfade_snapshot, active_fx_id, fx_crossfade_snapshot, fx_show_time, fader_values, blackout,
-             fog_enabled, fog_interval_min, fog_duration_s, fog_level, universe_muted) = {
+             fog_enabled, fog_interval_min, fog_duration_s, fog_level, universe_muted,
+             active_reactive_id, reactive_crossfade_snapshot, reactive_controls, reactive_auto) = {
             let mut s = state.lock().unwrap();
 
             // Advance crossfade (marks it complete when done).
@@ -113,7 +114,30 @@ pub fn run(
             let fx_id = s.active_fx_theme_id;
             let fog = (s.fog_enabled, s.fog_interval_min, s.fog_duration_s, s.fog_level);
             let muted = s.universe_muted.clone();
-            (id, cf, fx_id, fx_cf, fx_show, faders, bo, fog.0, fog.1, fog.2, fog.3, muted)
+            let reactive_id = s.active_reactive_theme_id;
+            let reactive_cf = s.reactive_crossfade.clone();
+            let controls = s.reactive_controls;
+            let auto = s.reactive_auto;
+            (id, cf, fx_id, fx_cf, fx_show, faders, bo, fog.0, fog.1, fog.2, fog.3, muted,
+             reactive_id, reactive_cf, controls, auto)
+        };
+
+        // Run the generative Director (Auto mode) from the live audio.
+        let show = director.update(&audio_now, &reactive_controls, elapsed);
+        reactive_live.store(reactive_auto, show.tier, show.palette_idx);
+
+        // Build the base context now that we have the live controls. Slot is
+        // overridden per-fixture inside group bindings.
+        let ctx = TickContext {
+            tick,
+            time: elapsed,
+            wall_clock: wall,
+            dt,
+            slot: 0,
+            show_time: elapsed,
+            audio: audio_now,
+            controls: reactive_controls,
+            show,
         };
 
         // FX bank gets a context whose `show_time` is measured from the moment
@@ -166,6 +190,35 @@ pub fn run(
                 }
             }
 
+            // --- Reactive bank ---
+            // Generative, audio-reactive scenes driven by `ctx.audio` (live
+            // analysis). Uses the base `ctx`; reactivity comes from the audio
+            // snapshot, not `show_time`. Renders additively like the FX bank.
+            // The operator's master brightness scales the whole bank.
+            let master = reactive_controls.master.clamp(0.0, 1.0);
+            if reactive_auto {
+                // Auto = the generative engine (Director-driven), one theme.
+                let gen_theme = crate::themes::reactive::generative();
+                render_theme_into(&gen_theme.bindings, &ctx, &mut universe_buffers, master);
+            } else if let Some(cf) = reactive_crossfade_snapshot {
+                let blend = cf.factor();
+                let from_themes = all_reactive_themes();
+                let to_themes = all_reactive_themes();
+
+                if let Some(from_theme) = from_themes.into_iter().nth(cf.from_theme_id) {
+                    render_theme_into(&from_theme.bindings, &ctx, &mut universe_buffers, (1.0 - blend) * master);
+                }
+                if let Some(to_theme) = to_themes.into_iter().nth(cf.to_theme_id) {
+                    render_theme_into(&to_theme.bindings, &ctx, &mut universe_buffers, blend * master);
+                }
+            } else {
+                let mut reactive_themes = all_reactive_themes();
+                if active_reactive_id < reactive_themes.len() {
+                    let reactive_theme = reactive_themes.swap_remove(active_reactive_id);
+                    render_theme_into(&reactive_theme.bindings, &ctx, &mut universe_buffers, master);
+                }
+            }
+
             // --- Independent faders ---
             for (fader_idx, &fixture) in fixtures::FADER_FIXTURES.iter().enumerate() {
                 let value = fader_values.get(fader_idx).copied().unwrap_or(0.0);
@@ -196,6 +249,13 @@ pub fn run(
                 );
             }
         }
+
+        // --- Publish the rendered frame for the live visualization ---
+        // A cheap copy of the buffers, swapped in lock-free so the web layer
+        // always reads a complete, consistent frame.
+        let snapshot: Vec<[u8; 512]> =
+            universe_buffers.iter().map(|b| **b).collect();
+        frame.store(Arc::new(snapshot));
 
         // --- Send all universes over Art-Net (skipping muted ones) ---
         // A muted universe gets no ArtDmx frame at all this tick; fixtures

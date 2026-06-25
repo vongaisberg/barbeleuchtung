@@ -30,6 +30,55 @@
     </section>
 
     <section class="section">
+      <h2>Reactive <span id="reactive-status" class="reactive-status">listening…</span></h2>
+
+      <div class="reactive-auto-block">
+        <button id="reactive-auto-btn" class="theme-btn" type="button">Auto</button>
+        <div class="reactive-auto-controls">
+          <div class="lock-row" id="tier-lock-row">
+            <span class="lock-label">Look</span>
+            <span id="live-look-badge" class="live-badge" hidden></span>
+          </div>
+          <div class="lock-row" id="palette-lock-row">
+            <span class="lock-label">Palette</span>
+            <span id="live-palette-badge" class="live-badge" hidden></span>
+          </div>
+          <div class="reactive-settings reactive-settings-inline">
+            <label class="setting" title="Overall reactive bank brightness">
+              <span>Brightness</span>
+              <input type="range" class="reactive-slider" id="set-master" min="0" max="1" step="0.01" value="1">
+            </label>
+            <label class="setting" title="How strongly audio drives the show">
+              <span>Sensitivity</span>
+              <input type="range" class="reactive-slider" id="set-sensitivity" min="0.3" max="2.5" step="0.05" value="1">
+            </label>
+            <label class="setting" title="White strobe / blinder amount (0 = off)">
+              <span>Strobe</span>
+              <input type="range" class="reactive-slider" id="set-strobe" min="0" max="1" step="0.01" value="1">
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div id="audio-meter" class="audio-meter">
+        <div class="meter-row">
+          <span class="meter-label">BPM</span>
+          <span id="meter-bpm" class="meter-value">—</span>
+          <span class="meter-label">beat</span>
+          <span id="meter-beat" class="meter-beat">●</span>
+          <span class="meter-label">groove</span>
+          <span id="meter-groove" class="meter-drop groove">4/4</span>
+        </div>
+        <div class="meter-row">
+          <span class="meter-label">energy</span>
+          <span id="meter-energy" class="meter-value">0</span>
+          <span class="meter-label">intensity</span>
+          <span id="meter-intensity" class="meter-value">0</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
       <h2>Spotify</h2>
       <div id="spotify-panel" class="spotify-panel">
         <div id="now-playing" class="now-playing">

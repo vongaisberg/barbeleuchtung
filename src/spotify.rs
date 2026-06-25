@@ -41,9 +41,9 @@ use base64::Engine;
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
-use crate::state::{AppState, ShowClock};
+use crate::state::{AppState, ReactiveLive, ShowClock};
 use crate::themes::{
-    FX_DJ_TURN_IT_UP_ID, FX_OFF_ID, FX_PRADA_ID, FX_SCHREI_NACH_LIEBE_ID, FX_WOULD_YOU_ID,
+    FX_DJ_TURN_IT_UP_ID, FX_PRADA_ID, FX_SCHREI_NACH_LIEBE_ID, FX_WOULD_YOU_ID,
 };
 
 const TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
@@ -413,6 +413,7 @@ struct Artist {
 /// not configured.
 pub fn spawn(
     state: Arc<Mutex<AppState>>,
+    reactive_live: Arc<ReactiveLive>,
     broadcast_tx: broadcast::Sender<String>,
 ) -> Option<Arc<SpotifyClient>> {
     let cfg = Config::from_env()?;
@@ -435,7 +436,7 @@ pub fn spawn(
 
     let poll_client = client.clone();
     actix_web::rt::spawn(async move {
-        poll_loop(poll_client, state, broadcast_tx).await;
+        poll_loop(poll_client, state, reactive_live, broadcast_tx).await;
     });
 
     Some(client)
@@ -444,6 +445,7 @@ pub fn spawn(
 async fn poll_loop(
     client: Arc<SpotifyClient>,
     state: Arc<Mutex<AppState>>,
+    reactive_live: Arc<ReactiveLive>,
     broadcast_tx: broadcast::Sender<String>,
 ) {
     let mut ticker = tokio::time::interval(POLL_INTERVAL);
@@ -458,7 +460,7 @@ async fn poll_loop(
         }
 
         match client.currently_playing().await {
-            Ok(sample) => apply_sample(&client, &state, &broadcast_tx, sample),
+            Ok(sample) => apply_sample(&client, &state, &reactive_live, &broadcast_tx, sample),
             Err(FetchError::RateLimited(retry_after)) => {
                 // Honour Spotify's Retry-After: log it and sleep that long
                 // (plus a small margin) before the next poll.
@@ -482,6 +484,7 @@ async fn poll_loop(
 fn apply_sample(
     client: &SpotifyClient,
     state: &Arc<Mutex<AppState>>,
+    reactive_live: &ReactiveLive,
     broadcast_tx: &broadcast::Sender<String>,
     sample: Sample,
 ) {
@@ -543,11 +546,11 @@ fn apply_sample(
     // Log every fetch, with the clock-vs-Spotify offset when we have one.
     let track_desc = label.as_deref().unwrap_or("(nothing playing)");
     match offset_secs {
-        Some(off) => log::info!(
+        Some(off) => log::debug!(
             "Spotify fetch: \"{track_desc}\" playing={playing} spotify={spotify_secs:.3}s \
              clock-vs-spotify offset={off:+.3}s"
         ),
-        None => log::info!(
+        None => log::debug!(
             "Spotify fetch: \"{track_desc}\" playing={playing} spotify={spotify_secs:.3}s \
              (no synced clock)"
         ),
@@ -556,30 +559,39 @@ fn apply_sample(
     s.now_playing = label;
 
     if let Some(fx_id) = matched_fx {
-        if s.active_fx_theme_id != fx_id || s.fx_crossfade.is_some() {
-            s.request_fx_theme(fx_id, None);
+        if !s.spotify_controlling {
+            s.spotify_begin_control();
+            log::info!(
+                "Spotify: matched song playing – locking FX show {fx_id} \
+                 (saved FX {} reactive auto={})",
+                s.spotify_saved.map(|x| x.fx_theme_id).unwrap_or(0),
+                s.spotify_saved.map(|x| x.reactive_auto).unwrap_or(false),
+            );
+        }
+        if s.active_fx_theme_id != fx_id {
+            s.fx_crossfade = None;
+            s.active_fx_theme_id = fx_id;
+            s.fx_theme_started_at = std::time::Instant::now();
         }
         s.fx_show_clock = Some(ShowClock {
             anchor_secs: progress_ms as f64 / 1000.0,
             anchor_at: sampled_at,
             playing,
         });
-        if !s.spotify_controlling {
-            log::info!("Spotify: matched song playing – locking FX show {fx_id}");
-        }
         s.spotify_controlling = true;
     } else if s.spotify_controlling {
-        // The song ended or changed: release the FX bank exactly once, handing
-        // it back to whatever the time-of-day schedule dictates (not blackout).
-        let target = crate::scheduler::current_scheduled_fx_theme_id().unwrap_or(FX_OFF_ID);
-        log::info!("Spotify: matched song stopped – returning FX bank to scheduled show {target}");
-        s.fx_show_clock = None;
-        s.spotify_controlling = false;
-        s.request_fx_theme(target, None);
+        let saved_fx = s.spotify_saved.map(|x| x.fx_theme_id);
+        let saved_auto = s.spotify_saved.map(|x| x.reactive_auto);
+        s.spotify_end_control();
+        log::info!(
+            "Spotify: matched song stopped – restored FX {:?} reactive auto={:?}",
+            saved_fx,
+            saved_auto,
+        );
     }
 
     let changed = s.now_playing != prev_label || s.spotify_controlling != prev_controlling;
     if changed {
-        crate::web::push_state(&s, broadcast_tx);
+        crate::web::push_state(&s, reactive_live, broadcast_tx);
     }
 }

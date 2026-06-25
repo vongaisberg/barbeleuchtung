@@ -1,7 +1,61 @@
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::Instant;
 
 use crate::engine::NUM_UNIVERSES;
 use crate::fixtures;
+
+/// Lock-free snapshot of what the generative engine is outputting right now.
+/// The DMX engine writes; the audio-meter thread and web snapshot read.
+#[derive(Default)]
+pub struct ReactiveLive {
+    pub auto_mode: AtomicBool,
+    pub tier: AtomicU8,
+    pub palette: AtomicU8,
+}
+
+impl ReactiveLive {
+    pub fn store(&self, auto_mode: bool, tier: u8, palette: u8) {
+        self.auto_mode.store(auto_mode, Ordering::Relaxed);
+        self.tier.store(tier, Ordering::Relaxed);
+        self.palette.store(palette, Ordering::Relaxed);
+    }
+
+    pub fn snapshot(&self) -> (bool, u8, u8) {
+        (
+            self.auto_mode.load(Ordering::Relaxed),
+            self.tier.load(Ordering::Relaxed),
+            self.palette.load(Ordering::Relaxed),
+        )
+    }
+}
+
+/// Live, operator-tunable controls for the reactive bank, surfaced in the web
+/// UI. Stored in [`AppState`] and copied into each tick's context so the
+/// stateless reactive effects can read them.
+#[derive(Clone, Copy, Debug)]
+pub struct ReactiveControls {
+    /// Master brightness for the whole reactive bank, `0.0..=1.0` (applied as
+    /// an output scale by the engine).
+    pub master: f32,
+    /// Audio sensitivity, `~0.5..=2.0` — multiplies perceived energy/onset so
+    /// the operator can make the show more or less reactive to a given level.
+    pub sensitivity: f32,
+    /// Strobe amount, `0.0..=1.0` — scales (and at 0 disables) every white
+    /// blinder/strobe gesture.
+    pub strobe: f32,
+    /// Operator tier override for Auto mode: `-1` = automatic (follow the
+    /// music), `0..=3` = force that energy tier (calm / groove / club / peak).
+    pub tier_lock: i8,
+    /// Operator palette override for Auto mode: `-1` = automatic rotation,
+    /// `0..=3` = force that palette (Neon / Warm / Cool / Acid).
+    pub palette_lock: i8,
+}
+
+impl Default for ReactiveControls {
+    fn default() -> Self {
+        Self { master: 1.0, sensitivity: 1.0, strobe: 1.0, tier_lock: -1, palette_lock: -1 }
+    }
+}
 
 /// Tracks an in-progress crossfade between two theme IDs.
 #[derive(Clone, Debug)]
@@ -65,6 +119,14 @@ impl ShowClock {
     }
 }
 
+/// Operator state captured when Spotify seizes the rig for a timecoded show.
+#[derive(Clone, Copy, Debug)]
+pub struct SpotifySavedState {
+    pub fx_theme_id: usize,
+    pub reactive_auto: bool,
+    pub reactive_theme_id: usize,
+}
+
 /// Shared application state, protected externally by `Arc<Mutex<AppState>>`.
 pub struct AppState {
     /// Index into the theme registry of the currently active theme.
@@ -116,6 +178,20 @@ pub struct AppState {
     /// matched song is playing).  Lets us hand control back exactly once when
     /// the song ends instead of fighting manual scene selection.
     pub spotify_controlling: bool,
+    /// Operator selection saved when Spotify first takes over a timecoded show;
+    /// restored (FX theme + reactive Auto/manual) when the song ends.
+    pub spotify_saved: Option<SpotifySavedState>,
+    /// Index into the reactive theme registry of the active reactive theme.
+    /// The reactive bank renders additively from live audio analysis.
+    pub active_reactive_theme_id: usize,
+    /// If a reactive crossfade is in progress this holds its descriptor.
+    pub reactive_crossfade: Option<CrossfadeState>,
+    /// When true, a background selector picks the reactive look automatically
+    /// from the music's energy (Dark→Groove→Club, with Strobe on peaks).
+    /// A manual look selection clears this so the operator's choice is pinned.
+    pub reactive_auto: bool,
+    /// Live operator controls for the reactive bank.
+    pub reactive_controls: ReactiveControls,
 }
 
 impl AppState {
@@ -138,6 +214,11 @@ impl AppState {
             spotify_available: false,
             spotify_connected: false,
             spotify_controlling: false,
+            spotify_saved: None,
+            active_reactive_theme_id: 0,
+            reactive_crossfade: None,
+            reactive_auto: false,
+            reactive_controls: ReactiveControls::default(),
         }
     }
 
@@ -207,6 +288,33 @@ impl AppState {
         }
     }
 
+    /// Request a reactive theme change, with the same crossfade logic as
+    /// `request_theme` but operating on the reactive bank fields.
+    pub fn request_reactive_theme(&mut self, new_id: usize, duration_ms: Option<u64>) {
+        if new_id == self.active_reactive_theme_id {
+            return;
+        }
+        match duration_ms {
+            Some(dur) if dur > 0 => {
+                let from = self
+                    .reactive_crossfade
+                    .as_ref()
+                    .map(|cf| cf.to_theme_id)
+                    .unwrap_or(self.active_reactive_theme_id);
+                self.reactive_crossfade = Some(CrossfadeState {
+                    from_theme_id: from,
+                    to_theme_id: new_id,
+                    duration_ms: dur,
+                    started_at: Instant::now(),
+                });
+            }
+            _ => {
+                self.active_reactive_theme_id = new_id;
+                self.reactive_crossfade = None;
+            }
+        }
+    }
+
     /// Called by the engine each tick to advance / complete crossfades.
     pub fn tick_crossfade(&mut self) {
         if let Some(cf) = &self.crossfade {
@@ -221,6 +329,62 @@ impl AppState {
                 self.fx_crossfade = None;
                 self.fx_theme_started_at = Instant::now();
             }
+        }
+        if let Some(cf) = &self.reactive_crossfade {
+            if cf.is_complete() {
+                self.active_reactive_theme_id = cf.to_theme_id;
+                self.reactive_crossfade = None;
+            }
+        }
+    }
+
+    /// FX theme the operator sees (destination during a crossfade).
+    pub fn effective_fx_theme_id(&self) -> usize {
+        self.fx_crossfade
+            .as_ref()
+            .map(|cf| cf.to_theme_id)
+            .unwrap_or(self.active_fx_theme_id)
+    }
+
+    /// Reactive theme the operator sees (destination during a crossfade).
+    pub fn effective_reactive_theme_id(&self) -> usize {
+        self.reactive_crossfade
+            .as_ref()
+            .map(|cf| cf.to_theme_id)
+            .unwrap_or(self.active_reactive_theme_id)
+    }
+
+    /// Spotify matched a timecoded show: remember the operator's FX + reactive
+    /// selection and silence the reactive bank so it doesn't fight the script.
+    pub fn spotify_begin_control(&mut self) {
+        if self.spotify_saved.is_none() {
+            self.spotify_saved = Some(SpotifySavedState {
+                fx_theme_id: self.effective_fx_theme_id(),
+                reactive_auto: self.reactive_auto,
+                reactive_theme_id: self.effective_reactive_theme_id(),
+            });
+        }
+        self.reactive_auto = false;
+        self.reactive_crossfade = None;
+        self.active_reactive_theme_id = 0;
+    }
+
+    /// Timecoded show ended: hand FX + reactive back to the saved selection.
+    pub fn spotify_end_control(&mut self) {
+        self.fx_show_clock = None;
+        self.spotify_controlling = false;
+        let Some(saved) = self.spotify_saved.take() else {
+            return;
+        };
+        self.fx_crossfade = None;
+        self.active_fx_theme_id = saved.fx_theme_id;
+        self.fx_theme_started_at = Instant::now();
+        self.reactive_auto = saved.reactive_auto;
+        self.reactive_crossfade = None;
+        if saved.reactive_auto {
+            // Generative Auto — manual look id is ignored by the engine.
+        } else {
+            self.active_reactive_theme_id = saved.reactive_theme_id;
         }
     }
 }

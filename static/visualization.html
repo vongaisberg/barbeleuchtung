@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stage Visualization</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #050507;
+    color: #d8d8e0;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 14px 20px 6px;
+  }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  .status { font-size: 12px; color: #6c6c7a; }
+  .status.live { color: #4ade80; }
+  .status.stale { color: #f87171; }
+  .wrap { padding: 6px 20px 24px; }
+  .stage {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    display: block;
+    border: 1px solid #1b1b24;
+    border-radius: 10px;
+    background:
+      radial-gradient(120% 90% at 50% 0%, #15151e 0%, #0a0a0f 60%, #070709 100%);
+  }
+  .label { font: 10px/1 system-ui, sans-serif; fill: #8a8a98; text-anchor: middle; }
+  .trusslabel { font: 9px/1 system-ui, sans-serif; fill: #54545f; }
+  .hint { color: #5a5a68; font-size: 12px; max-width: 1100px; margin: 10px auto 0; }
+  code { color: #9aa0c0; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Stage — front view</h1>
+    <span id="status" class="status">connecting…</span>
+  </header>
+  <div class="wrap">
+    <svg id="stage" class="stage" preserveAspectRatio="xMidYMid meet"></svg>
+    <p class="hint">Live colours mirror the DMX engine output. Edit positions in
+      <code>static/stage_layout.json</code> and reload.</p>
+  </div>
+
+<script>
+const SVGNS = "http://www.w3.org/2000/svg";
+const POLL_MS = 50;
+const stage = document.getElementById("stage");
+const statusEl = document.getElementById("status");
+
+let layout = null;
+let views = {};            // name -> latest fixture view
+let nodes = {};            // name -> { update(view, gate) }
+let beamsLayer = null;
+let lastFrameAt = 0;
+
+function el(tag, attrs) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+const mul = (c, k) => [c[0]*k, c[1]*k, c[2]*k];
+function rgbStr(c) { return `rgb(${c[0]|0},${c[1]|0},${c[2]|0})`; }
+function lum(c) { return (c[0] + c[1] + c[2]) / (3 * 255); }
+
+// --- Build the static scene from the layout -------------------------------
+function buildScene() {
+  stage.innerHTML = "";
+  stage.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
+  if (layout.background) stage.style.background = layout.background;
+
+  const trusses = layout.trusses || (layout.truss ? [layout.truss] : []);
+  for (const t of trusses) {
+    stage.appendChild(el("rect", {
+      x: 20, y: t.y, width: layout.width - 40, height: t.height,
+      rx: 3, fill: "#1c1c26", stroke: "#2a2a38", "stroke-width": 1
+    }));
+    if (t.label) {
+      const lab = el("text", { x: 24, y: t.y - 4, class: "trusslabel" });
+      lab.textContent = t.label;
+      stage.appendChild(lab);
+    }
+  }
+  if (layout.floorY) {
+    stage.appendChild(el("line", {
+      x1: 0, y1: layout.floorY, x2: layout.width, y2: layout.floorY,
+      stroke: "#15151d", "stroke-width": 2
+    }));
+  }
+
+  // Layer for derby light streaks, painted on top with additive (screen) blend.
+  beamsLayer = el("g", {});
+  beamsLayer.style.mixBlendMode = "screen";
+  beamsLayer.style.filter = "blur(2px)";
+  beamsLayer.style.pointerEvents = "none";
+  stage.appendChild(beamsLayer);
+
+  nodes = {};
+  for (const f of layout.fixtures) nodes[f.name] = buildFixture(f);
+
+  stage.appendChild(beamsLayer); // keep streaks on top of fixtures
+}
+
+function buildFixture(f) {
+  const g = el("g", {});
+  stage.appendChild(g);
+  const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+
+  const label = el("text", { x: cx, y: f.y + f.h + 13, class: "label" });
+  label.textContent = f.name;
+  g.appendChild(label);
+
+  if (f.kind === "par") return buildPar(f, g, cx, cy);
+  if (f.kind === "derby") return buildDerby(f, g, cx, cy);
+  if (f.kind === "pixbar") return buildPixbar(f, g);
+  if (f.kind === "strip") return buildStrip(f, g);
+  return buildScanner(f, g, cx, cy);
+}
+
+function buildPar(f, g, cx, cy) {
+  const halo = el("rect", { x: f.x - 6, y: f.y - 6, width: f.w + 12, height: f.h + 12, rx: 12, fill: "#000", opacity: 0 });
+  const body = el("rect", { x: f.x, y: f.y, width: f.w, height: f.h, rx: 10, fill: "#111", stroke: "#2a2a38", "stroke-width": 1.5 });
+  const lens = el("circle", { cx, cy, r: Math.min(f.w, f.h) * 0.30, fill: "#080808" });
+  g.append(halo, body, lens);
+  return { update(v, gate) {
+    const on = v ? v.intensity * gate : 0;
+    const c = v ? v.rgb : [0,0,0];
+    lens.setAttribute("fill", rgbStr(mul(c, gate)));
+    halo.setAttribute("fill", rgbStr(c));
+    halo.setAttribute("opacity", (0.45 * on).toFixed(3));
+    body.style.filter = on > 0.02 ? `drop-shadow(0 0 ${(10 + 22*on)|0}px ${rgbStr(c)})` : "none";
+  }};
+}
+
+function buildDerby(f, g, cx, cy) {
+  const r = Math.min(f.w, f.h) / 2;
+  const body = el("circle", { cx, cy, r, fill: "#0c0c10", stroke: "#2a2a38", "stroke-width": 1.5 });
+  const core = el("circle", { cx, cy, r: r * 0.62, fill: "#080808" });
+  g.append(body, core);
+
+  // Streaks: a fan of rays from the fixture, long enough to cross the screen.
+  const bg = el("g", {});
+  beamsLayer.appendChild(bg);
+  const L = Math.hypot(layout.width, layout.height);
+  const N = 14;
+  const rays = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const ray = el("line", {
+      x1: cx, y1: cy,
+      x2: cx + Math.cos(a) * L, y2: cy + Math.sin(a) * L,
+      stroke: "#000", "stroke-width": (i % 2 ? 2 : 3.5),
+      "stroke-linecap": "round", opacity: 0
+    });
+    bg.appendChild(ray);
+    rays.push({ ray, faint: i % 2 === 1 });
+  }
+  const st = { angle: Math.random() * 360, last: performance.now() };
+
+  return { update(v, gate) {
+    const on = v ? v.intensity * gate : 0;
+    const c = v ? v.rgb : [0,0,0];
+    core.setAttribute("fill", rgbStr(mul(c, gate)));
+    body.style.filter = on > 0.02 ? `drop-shadow(0 0 ${(8 + 26*on)|0}px ${rgbStr(c)})` : "none";
+
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - st.last) / 1000); st.last = now;
+    const rot = v ? v.rotation : 0;
+    const omega = 8 + rot * 230;                 // deg/s, always drifting a bit
+    st.angle = (st.angle + omega * dt) % 360;
+    bg.setAttribute("transform", `rotate(${st.angle.toFixed(2)} ${cx} ${cy})`);
+
+    const cs = rgbStr(c);
+    for (const { ray, faint } of rays) {
+      ray.setAttribute("stroke", cs);
+      ray.setAttribute("opacity", on > 0.02 ? (on * (faint ? 0.10 : 0.22)).toFixed(3) : 0);
+    }
+  }};
+}
+
+function buildPixbar(f, g) {
+  const body = el("rect", { x: f.x, y: f.y, width: f.w, height: f.h, rx: 7, fill: "#0c0c10", stroke: "#2a2a38", "stroke-width": 1.5 });
+  g.appendChild(body);
+  const p = 6, gap = 3;
+  const x0 = f.x + p, y0 = f.y + p;
+  const iw = f.w - 2*p, ih = f.h - 2*p;
+  const colW = (iw - 3*gap) / 4;
+  const rowH = (ih - 2*gap) * 0.37;
+  const whiteH = (ih - 2*gap) - 2*rowH;
+  const colX = j => x0 + j * (colW + gap);
+
+  const top = [], bottom = [], white = [];
+  for (let j = 0; j < 4; j++) {
+    top.push(g.appendChild(el("rect", { x: colX(j), y: y0, width: colW, height: rowH, rx: 2, fill: "#080808" })));
+  }
+  for (let j = 0; j < 4; j++) {
+    white.push(g.appendChild(el("rect", { x: colX(j), y: y0 + rowH + gap, width: colW, height: whiteH, rx: 2, fill: "#080808" })));
+  }
+  for (let j = 0; j < 4; j++) {
+    bottom.push(g.appendChild(el("rect", { x: colX(j), y: y0 + rowH + gap + whiteH + gap, width: colW, height: rowH, rx: 2, fill: "#080808" })));
+  }
+
+  return { update(v, gate) {
+    const segs = (v && v.segments && v.segments.length === 8) ? v.segments : new Array(8).fill([0,0,0]);
+    const wh = (v && v.whites && v.whites.length === 4) ? v.whites : new Array(4).fill([0,0,0]);
+    let maxL = 0, dom = [0,0,0];
+    const paint = (cell, c) => {
+      const cc = mul(c, gate);
+      cell.setAttribute("fill", rgbStr(cc));
+      const l = lum(cc); if (l > maxL) { maxL = l; dom = c; }
+    };
+    for (let j = 0; j < 4; j++) { paint(top[j], segs[j]); paint(bottom[j], segs[j+4]); paint(white[j], wh[j]); }
+    body.style.filter = maxL > 0.02 ? `drop-shadow(0 0 ${(6 + 22*maxL)|0}px ${rgbStr(dom)})` : "none";
+  }};
+}
+
+function buildStrip(f, g) {
+  const body = el("rect", { x: f.x, y: f.y, width: f.w, height: f.h, rx: 6, fill: "#0c0c10", stroke: "#2a2a38", "stroke-width": 1.5 });
+  g.appendChild(body);
+  const n = 10, p = 5, gap = 3;
+  const cw = (f.w - 2*p - gap*(n-1)) / n;
+  const cells = [];
+  for (let i = 0; i < n; i++) {
+    cells.push(g.appendChild(el("rect", { x: f.x + p + i*(cw+gap), y: f.y + p, width: cw, height: f.h - 2*p, rx: 2, fill: "#080808" })));
+  }
+  return { update(v, gate) {
+    const segs = (v && v.segments && v.segments.length) ? v.segments : new Array(n).fill([0,0,0]);
+    let maxL = 0, dom = [0,0,0];
+    for (let i = 0; i < n; i++) {
+      const c = mul(segs[i] || [0,0,0], gate);
+      cells[i].setAttribute("fill", rgbStr(c));
+      const l = lum(c); if (l > maxL) { maxL = l; dom = segs[i]; }
+    }
+    body.style.filter = maxL > 0.02 ? `drop-shadow(0 0 ${(6 + 16*maxL)|0}px ${rgbStr(dom)})` : "none";
+  }};
+}
+
+function buildScanner(f, g, cx, cy) {
+  const r = Math.min(f.w, f.h) / 2;
+  const beam = el("path", { d: "", fill: "#000", opacity: 0 });
+  const body = el("circle", { cx, cy, r, fill: "#0c0c10", stroke: "#2a2a38", "stroke-width": 1.5 });
+  const mirror = el("circle", { cx, cy, r: r * 0.45, fill: "#080808" });
+  g.append(beam, body, mirror);
+  return { update(v, gate) {
+    const on = v ? v.intensity * gate : 0;
+    const c = v ? v.rgb : [0,0,0];
+    mirror.setAttribute("fill", rgbStr(mul(c, gate)));
+    body.style.filter = on > 0.02 ? `drop-shadow(0 0 ${(8 + 20*on)|0}px ${rgbStr(c)})` : "none";
+    if (v && on > 0.02) {
+      const ang = ((v.pan - 0.5) * 110) * Math.PI/180;
+      const len = (60 + 150 * v.tilt);
+      const ex = cx + Math.sin(ang) * len, ey = cy + Math.cos(ang) * len;
+      const nx = Math.cos(ang) * r * 0.5, ny = -Math.sin(ang) * r * 0.5;
+      beam.setAttribute("d", `M ${cx-nx} ${cy-ny} L ${ex - nx*2.2} ${ey - ny*2.2} L ${ex + nx*2.2} ${ey + ny*2.2} L ${cx+nx} ${cy+ny} Z`);
+      beam.setAttribute("fill", rgbStr(c));
+      beam.setAttribute("opacity", (0.20 * on).toFixed(3));
+    } else {
+      beam.setAttribute("opacity", 0);
+    }
+  }};
+}
+
+// --- Strobe gate (0/1); 0 strobe => always on ----------------------------
+function strobeGate(strobe, t) {
+  if (!strobe) return 1;
+  const hz = 1 + (strobe / 255) * 24;
+  return (Math.sin(t / 1000 * hz * Math.PI * 2) > 0) ? 1 : 0;
+}
+
+// --- Render loop ----------------------------------------------------------
+function tick() {
+  const t = performance.now();
+  for (const f of (layout ? layout.fixtures : [])) {
+    const v = views[f.name];
+    const gate = v ? strobeGate(v.strobe, t) : 1;
+    nodes[f.name].update(v, gate);
+  }
+  const age = t - lastFrameAt;
+  if (lastFrameAt === 0) { statusEl.textContent = "connecting…"; statusEl.className = "status"; }
+  else if (age > 1500) { statusEl.textContent = "no data"; statusEl.className = "status stale"; }
+  else { statusEl.textContent = "live"; statusEl.className = "status live"; }
+  requestAnimationFrame(tick);
+}
+
+async function poll() {
+  try {
+    const r = await fetch("visualization/frame.json", { cache: "no-store" });
+    if (r.ok) {
+      const data = await r.json();
+      const map = {};
+      for (const v of data.fixtures) map[v.name] = v;
+      views = map;
+      lastFrameAt = performance.now();
+    }
+  } catch (e) { /* keep last frame; status will go stale */ }
+}
+
+async function start() {
+  const r = await fetch("visualization/layout.json", { cache: "no-store" });
+  layout = await r.json();
+  buildScene();
+  requestAnimationFrame(tick);
+  poll();
+  setInterval(poll, POLL_MS);
+}
+start();
+</script>
+</body>
+</html>

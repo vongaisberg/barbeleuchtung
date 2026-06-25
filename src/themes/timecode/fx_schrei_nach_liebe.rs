@@ -1035,6 +1035,9 @@ mod tests {
                 wall_clock: chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap(),
                 dt: 0.01,
                 slot: 0,
+                audio: crate::audio::silent_features(),
+                controls: crate::state::ReactiveControls::default(),
+                show: crate::themes::reactive::ShowParams::default(),
             };
             for (name, fx) in &effects {
                 let out = fx.tick(&ctx);
@@ -1061,6 +1064,9 @@ mod tests {
             wall_clock: chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap(),
             dt: 0.01,
             slot: 0,
+            audio: crate::audio::silent_features(),
+            controls: crate::state::ReactiveControls::default(),
+            show: crate::themes::reactive::ShowParams::default(),
         };
         let par = SnlRootPar { step: 0 };
         // Mid-blast, on a strobe-on phase: white at full.

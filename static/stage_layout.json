@@ -1,0 +1,27 @@
+{
+  "_comment": "Front-view layout of the stage fixtures. Edit x/y/w/h (in canvas pixels) to match the real rig, then just reload the /visualization page - no rebuild needed. 'name' must match the fixture name in src/fixtures.rs. 'kind' picks how it is drawn (par, pixbar, derby, scanner, strip).",
+  "width": 1000,
+  "height": 480,
+  "background": "#0a0a0f",
+  "trusses": [
+    { "y": 46,  "height": 14, "label": "Back truss" },
+    { "y": 214, "height": 14, "label": "Front truss" }
+  ],
+  "floorY": 452,
+  "fixtures": [
+    { "name": "PixStrobe 1", "kind": "pixbar",  "x": 120, "y": 62,  "w": 184, "h": 78 },
+    { "name": "QuadPhase 1", "kind": "derby",   "x": 434, "y": 56,  "w": 60,  "h": 60 },
+    { "name": "QuadPhase 2", "kind": "derby",   "x": 514, "y": 56,  "w": 60,  "h": 60 },
+    { "name": "PixStrobe 2", "kind": "pixbar",  "x": 696, "y": 62,  "w": 184, "h": 78 },
+
+    { "name": "Scanner 1",   "kind": "scanner", "x": 70,  "y": 180, "w": 80,  "h": 80 },
+    { "name": "RootPar 1",   "kind": "par",     "x": 372, "y": 226, "w": 54,  "h": 54 },
+    { "name": "RootPar 2",   "kind": "par",     "x": 448, "y": 226, "w": 54,  "h": 54 },
+    { "name": "RootPar 3",   "kind": "par",     "x": 524, "y": 226, "w": 54,  "h": 54 },
+    { "name": "RootPar 4",   "kind": "par",     "x": 600, "y": 226, "w": 54,  "h": 54 },
+    { "name": "Scanner 2",   "kind": "scanner", "x": 850, "y": 180, "w": 80,  "h": 80 },
+
+    { "name": "Lounge",      "kind": "strip",   "x": 110, "y": 404, "w": 360, "h": 30 },
+    { "name": "Bar",         "kind": "strip",   "x": 530, "y": 404, "w": 360, "h": 30 }
+  ]
+}

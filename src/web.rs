@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 use crate::fixtures;
-use crate::state::AppState;
-use crate::theme::{all_fx_themes, all_themes, fx_theme_names, theme_names, Transition};
+use crate::state::{AppState, ReactiveLive};
+use crate::theme::{
+    all_fx_themes, all_reactive_themes, all_themes, fx_theme_names, theme_names, Transition,
+};
 
 // ---------------------------------------------------------------------------
 // Broadcast channel – lets the server push state updates to all connected
@@ -21,10 +23,23 @@ pub struct StateSnapshot {
     msg_type: &'static str,
     theme: usize,
     fx_theme: usize,
+    reactive_theme: usize,
     faders: Vec<f32>,
     blackout: bool,
     theme_names: Vec<&'static str>,
     fx_theme_names: Vec<&'static str>,
+    reactive_theme_names: Vec<&'static str>,
+    reactive_auto: bool,
+    reactive_master: f32,
+    reactive_sensitivity: f32,
+    reactive_strobe: f32,
+    reactive_tier_lock: i8,
+    reactive_palette_lock: i8,
+    /// Generative tier/palette currently on screen (Auto mode).
+    reactive_live_tier: u8,
+    reactive_live_palette: u8,
+    reactive_tier_names: Vec<&'static str>,
+    reactive_palette_names: Vec<&'static str>,
     fader_labels: Vec<&'static str>,
     fog_enabled: bool,
     fog_interval_min: f32,
@@ -52,7 +67,8 @@ pub struct UniverseInfo {
 }
 
 impl StateSnapshot {
-    fn from_state(state: &AppState) -> Self {
+    fn from_state(state: &AppState, live: &ReactiveLive) -> Self {
+        let (_, live_tier, live_palette) = live.snapshot();
         // During a crossfade the engine still blends from active_theme_id, but
         // the UI should immediately highlight the destination so the button
         // reflects what the user just pressed.
@@ -66,6 +82,11 @@ impl StateSnapshot {
             .as_ref()
             .map(|cf| cf.to_theme_id)
             .unwrap_or(state.active_fx_theme_id);
+        let reactive_theme = state
+            .reactive_crossfade
+            .as_ref()
+            .map(|cf| cf.to_theme_id)
+            .unwrap_or(state.active_reactive_theme_id);
         let universes = fixtures::PATCHED_UNIVERSES
             .iter()
             .map(|&(universe, label)| UniverseInfo {
@@ -82,10 +103,22 @@ impl StateSnapshot {
             msg_type: "state",
             theme,
             fx_theme,
+            reactive_theme,
             faders: state.fader_values.clone(),
             blackout: state.blackout,
             theme_names: theme_names(),
             fx_theme_names: fx_theme_names(),
+            reactive_theme_names: crate::theme::reactive_theme_names(),
+            reactive_auto: state.reactive_auto,
+            reactive_master: state.reactive_controls.master,
+            reactive_sensitivity: state.reactive_controls.sensitivity,
+            reactive_strobe: state.reactive_controls.strobe,
+            reactive_tier_lock: state.reactive_controls.tier_lock,
+            reactive_palette_lock: state.reactive_controls.palette_lock,
+            reactive_live_tier: live_tier,
+            reactive_live_palette: live_palette,
+            reactive_tier_names: crate::themes::reactive::TIER_NAMES.to_vec(),
+            reactive_palette_names: crate::themes::reactive::PALETTE_NAMES.to_vec(),
             fader_labels: fixtures::FADER_LABELS.to_vec(),
             fog_enabled: state.fog_enabled,
             fog_interval_min: state.fog_interval_min,
@@ -102,8 +135,12 @@ impl StateSnapshot {
 
 /// Build a state snapshot and broadcast it to all connected WebSocket clients.
 /// Used by background tasks (e.g. the Spotify sync) to push updates.
-pub fn push_state(state: &AppState, broadcast_tx: &broadcast::Sender<String>) {
-    let snapshot = StateSnapshot::from_state(state);
+pub fn push_state(
+    state: &AppState,
+    live: &ReactiveLive,
+    broadcast_tx: &broadcast::Sender<String>,
+) {
+    let snapshot = StateSnapshot::from_state(state, live);
     if let Ok(json) = serde_json::to_string(&snapshot) {
         let _ = broadcast_tx.send(json);
     }
@@ -115,6 +152,11 @@ pub fn push_state(state: &AppState, broadcast_tx: &broadcast::Sender<String>) {
 enum ClientMessage {
     Theme { id: usize },
     FxTheme { id: usize },
+    ReactiveTheme { id: usize },
+    ReactiveAuto { active: bool },
+    ReactiveControls { master: f32, sensitivity: f32, strobe: f32 },
+    ReactiveTierLock { tier: i8 },
+    ReactivePaletteLock { palette: i8 },
     Fader { id: usize, value: f32 },
     Blackout { active: bool },
     FogEnabled { active: bool },
@@ -132,6 +174,11 @@ pub struct WebData {
     pub broadcast_tx: broadcast::Sender<String>,
     /// Spotify client for the OAuth login routes; `None` if not configured.
     pub spotify: Option<Arc<crate::spotify::SpotifyClient>>,
+    /// Latest rendered DMX frame, published by the engine for the
+    /// `/visualization` front view.
+    pub frame: crate::viz::FrameHandle,
+    /// Lock-free generative tier/palette readout for the reactive UI.
+    pub reactive_live: Arc<ReactiveLive>,
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +255,7 @@ pub async fn spotify_callback(
             }
             // Refresh all clients so the UI drops the "Connect" prompt.
             let s = data.state.lock().unwrap();
-            push_state(&s, &data.broadcast_tx);
+            push_state(&s, &data.reactive_live, &data.broadcast_tx);
             drop(s);
             // Bounce back to the app root. Relative "../" resolves against the
             // callback path (/spotify/callback) to "/" — and stays correct when
@@ -235,12 +282,13 @@ pub async fn websocket(
 
     let state = data.state.clone();
     let broadcast_tx = data.broadcast_tx.clone();
+    let reactive_live = data.reactive_live.clone();
     let mut broadcast_rx = broadcast_tx.subscribe();
 
     // Send current state immediately on connect.
     {
         let s = state.lock().unwrap();
-        let snapshot = StateSnapshot::from_state(&s);
+        let snapshot = StateSnapshot::from_state(&s, &reactive_live);
         let json = serde_json::to_string(&snapshot).unwrap();
         drop(s);
         let _ = session.text(json).await;
@@ -253,7 +301,7 @@ pub async fn websocket(
                 msg = msg_stream.recv() => {
                     match msg {
                         Some(Ok(AggregatedMessage::Text(text))) => {
-                            handle_client_message(&text, &state, &broadcast_tx);
+                            handle_client_message(&text, &state, &reactive_live, &broadcast_tx);
                         }
                         Some(Ok(AggregatedMessage::Ping(ping))) => {
                             let _ = session.pong(&ping).await;
@@ -279,6 +327,7 @@ pub async fn websocket(
 fn handle_client_message(
     text: &str,
     state: &Arc<Mutex<AppState>>,
+    reactive_live: &ReactiveLive,
     broadcast_tx: &broadcast::Sender<String>,
 ) {
     let msg: ClientMessage = match serde_json::from_str(text) {
@@ -315,11 +364,42 @@ fn handle_client_message(
                 // the next poll re-evaluates the currently playing track.
                 s.fx_show_clock = None;
                 s.spotify_controlling = false;
+                s.spotify_saved = None;
                 s.request_fx_theme(id, duration_ms);
                 log::info!("FX theme changed to {id}");
             } else {
                 log::warn!("Unknown FX theme id {id}");
             }
+        }
+        ClientMessage::ReactiveTheme { id } => {
+            let reactive_themes = all_reactive_themes();
+            if id < reactive_themes.len() {
+                let duration_ms = match reactive_themes[id].transition {
+                    Transition::Crossfade { duration_ms } => Some(duration_ms),
+                    Transition::Instant => None,
+                };
+                // A manual pick pins the operator's choice and leaves Auto.
+                s.reactive_auto = false;
+                s.request_reactive_theme(id, duration_ms);
+                log::info!("Reactive theme changed to {id} (auto off)");
+            } else {
+                log::warn!("Unknown reactive theme id {id}");
+            }
+        }
+        ClientMessage::ReactiveAuto { active } => {
+            s.reactive_auto = active;
+            log::info!("Reactive auto {}", if active { "on" } else { "off" });
+        }
+        ClientMessage::ReactiveControls { master, sensitivity, strobe } => {
+            s.reactive_controls.master = master.clamp(0.0, 1.0);
+            s.reactive_controls.sensitivity = sensitivity.clamp(0.3, 2.5);
+            s.reactive_controls.strobe = strobe.clamp(0.0, 1.0);
+        }
+        ClientMessage::ReactiveTierLock { tier } => {
+            s.reactive_controls.tier_lock = tier.clamp(-1, 3);
+        }
+        ClientMessage::ReactivePaletteLock { palette } => {
+            s.reactive_controls.palette_lock = palette.clamp(-1, 3);
         }
         ClientMessage::Fader { id, value } => {
             if id < s.fader_values.len() {
@@ -354,7 +434,7 @@ fn handle_client_message(
     }
 
     // Push new state to all connected clients.
-    let snapshot = StateSnapshot::from_state(&s);
+    let snapshot = StateSnapshot::from_state(&s, reactive_live);
     drop(s);
     if let Ok(json) = serde_json::to_string(&snapshot) {
         let _ = broadcast_tx.send(json);

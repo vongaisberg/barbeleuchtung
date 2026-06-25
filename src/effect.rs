@@ -22,6 +22,16 @@ pub struct TickContext {
     /// Slot information – where this fixture sits within a group/matrix.
     /// For single-fixture bindings this is always `0`.
     pub slot: usize,
+    /// Latest realtime audio analysis. Reactive-bank effects read this to drive
+    /// fixtures from the music; all other effects ignore it. Held behind an
+    /// `Arc` so cloning the context per fixture is a cheap refcount bump.
+    pub audio: std::sync::Arc<crate::audio::AudioFeatures>,
+    /// Live operator controls (sensitivity, strobe amount, …) for reactive
+    /// effects. Other banks ignore it.
+    pub controls: crate::state::ReactiveControls,
+    /// Generative show parameters from the Director (Auto mode). Only the
+    /// generative effects read this; everything else ignores it.
+    pub show: crate::themes::reactive::ShowParams,
 }
 
 /// Core effect abstraction. An effect maps a `TickContext` to a flat vector of

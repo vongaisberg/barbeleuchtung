@@ -32,6 +32,7 @@ function connect() {
     try {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'state') applyState(msg);
+      else if (msg.type === 'audio') applyAudio(msg);
     } catch (e) {
       console.warn('Bad WS message:', ev.data, e);
     }
@@ -63,6 +64,13 @@ function send(obj) {
 
 let currentTheme    = 0;
 let currentFxTheme  = 0;
+let currentReactiveAuto = false;
+let tierNames = ['Calm', 'Groove', 'Club', 'Peak'];
+let paletteNames = ['Neon', 'Warm', 'Cool', 'Acid'];
+let liveTier = 0;
+let livePalette = 0;
+let tierLock = -1;
+let paletteLock = -1;
 let currentBlackout = false;
 let currentFogEnabled = false;
 
@@ -85,6 +93,40 @@ function applyState(state) {
   document.querySelectorAll('#fx-theme-grid .theme-btn').forEach((btn, i) => {
     btn.classList.toggle('active', i === currentFxTheme);
   });
+
+  // Reactive Auto vs manual looks.
+  wireReactiveAuto();
+  if (state.reactive_tier_names) tierNames = state.reactive_tier_names;
+  if (state.reactive_palette_names) paletteNames = state.reactive_palette_names;
+  if (state.reactive_live_tier !== undefined) liveTier = state.reactive_live_tier;
+  if (state.reactive_live_palette !== undefined) livePalette = state.reactive_live_palette;
+
+  if (state.reactive_auto !== undefined) {
+    currentReactiveAuto = state.reactive_auto;
+    const autoBtn = document.getElementById('reactive-auto-btn');
+    if (autoBtn) autoBtn.classList.toggle('active', currentReactiveAuto);
+  }
+
+  // Tier / palette lock rows (Auto mode sub-controls).
+  buildLockRow('tier-lock-row', ['Auto', ...tierNames], 'reactive_tier_lock');
+  buildLockRow('palette-lock-row', ['Auto', ...paletteNames], 'reactive_palette_lock');
+  if (state.reactive_tier_lock !== undefined) tierLock = state.reactive_tier_lock;
+  if (state.reactive_palette_lock !== undefined) paletteLock = state.reactive_palette_lock;
+  if (state.reactive_tier_lock !== undefined) {
+    highlightLock('tier-lock-row', tierLock, liveTier, currentReactiveAuto);
+  }
+  if (state.reactive_palette_lock !== undefined) {
+    highlightLock('palette-lock-row', paletteLock, livePalette, currentReactiveAuto);
+  }
+  updateLiveBadges(state);
+
+  // Reactive control sliders.
+  wireReactiveControls();
+  if (state.reactive_master !== undefined && !controlsDragging) {
+    setSlider('set-master', state.reactive_master);
+    setSlider('set-sensitivity', state.reactive_sensitivity);
+    setSlider('set-strobe', state.reactive_strobe);
+  }
 
   // Update fader values (without re-triggering input events).
   state.faders.forEach((val, i) => {
@@ -260,6 +302,167 @@ function buildFxThemeButtons(names) {
     });
     grid.appendChild(btn);
   });
+}
+
+let reactiveAutoWired = false;
+function wireReactiveAuto() {
+  if (reactiveAutoWired) return;
+  const btn = document.getElementById('reactive-auto-btn');
+  if (!btn) return;
+  reactiveAutoWired = true;
+  btn.addEventListener('click', () => {
+    send({ type: 'reactive_auto', active: !currentReactiveAuto });
+  });
+}
+
+function setSlider(id, val) {
+  const el = document.getElementById(id);
+  if (el && document.activeElement !== el) el.value = val;
+}
+
+// Lock button rows (tier / palette): values are -1 (Auto), 0..3.
+const lockBuilt = {};
+function buildLockRow(rowId, labels, msgType) {
+  if (lockBuilt[rowId]) return;
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  lockBuilt[rowId] = true;
+  labels.forEach((name, i) => {
+    const value = i - 1; // first = Auto = -1
+    const btn = document.createElement('button');
+    btn.className = 'lock-btn';
+    btn.textContent = name;
+    btn.dataset.value = String(value);
+    btn.addEventListener('click', () => {
+      const key = msgType === 'reactive_tier_lock' ? 'tier' : 'palette';
+      send({ type: msgType, [key]: value });
+    });
+    row.appendChild(btn);
+  });
+}
+function highlightLock(rowId, lockValue, liveValue, autoMode) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  row.querySelectorAll('.lock-btn').forEach((b) => {
+    const v = Number(b.dataset.value);
+    b.classList.toggle('active', v === lockValue);
+    const showLive = autoMode && lockValue === -1 && v >= 0 && v === liveValue;
+    const showForced = autoMode && lockValue >= 0 && v === lockValue;
+    b.classList.toggle('live', showLive || showForced);
+  });
+}
+
+function updateLiveBadges(state) {
+  const lookBadge = document.getElementById('live-look-badge');
+  const palBadge = document.getElementById('live-palette-badge');
+  if (!lookBadge || !palBadge) return;
+
+  if (state.reactive_auto) {
+    const t = state.reactive_live_tier ?? liveTier;
+    const p = state.reactive_live_palette ?? livePalette;
+    lookBadge.textContent = `→ ${tierNames[t] || t}`;
+    palBadge.textContent = `→ ${paletteNames[p] || p}`;
+    lookBadge.hidden = false;
+    palBadge.hidden = false;
+  } else {
+    lookBadge.hidden = true;
+    palBadge.hidden = true;
+  }
+}
+
+function refreshReactiveLiveIndicators() {
+  highlightLock('tier-lock-row', tierLock, liveTier, currentReactiveAuto);
+  highlightLock('palette-lock-row', paletteLock, livePalette, currentReactiveAuto);
+  if (currentReactiveAuto) {
+    const lookBadge = document.getElementById('live-look-badge');
+    const palBadge = document.getElementById('live-palette-badge');
+    if (lookBadge) {
+      lookBadge.textContent = `→ ${tierNames[liveTier] || liveTier}`;
+      lookBadge.hidden = false;
+    }
+    if (palBadge) {
+      palBadge.textContent = `→ ${paletteNames[livePalette] || livePalette}`;
+      palBadge.hidden = false;
+    }
+  } else {
+    const lookBadge = document.getElementById('live-look-badge');
+    const palBadge = document.getElementById('live-palette-badge');
+    if (lookBadge) lookBadge.hidden = true;
+    if (palBadge) palBadge.hidden = true;
+  }
+}
+
+let controlsWired = false;
+let controlsDragging = false;
+function sendReactiveControls() {
+  send({
+    type: 'reactive_controls',
+    master: parseFloat(document.getElementById('set-master').value),
+    sensitivity: parseFloat(document.getElementById('set-sensitivity').value),
+    strobe: parseFloat(document.getElementById('set-strobe').value),
+  });
+}
+function wireReactiveControls() {
+  if (controlsWired) return;
+  const ids = ['set-master', 'set-sensitivity', 'set-strobe'];
+  const els = ids.map((i) => document.getElementById(i));
+  if (els.some((e) => !e)) return;
+  controlsWired = true;
+  els.forEach((el) => {
+    el.addEventListener('input', () => { controlsDragging = true; sendReactiveControls(); });
+    el.addEventListener('change', () => { controlsDragging = false; });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Live audio meter (type:"audio" messages, ~20 Hz)
+// ---------------------------------------------------------------------------
+
+let lastBeatPhase = 1.0;
+function applyAudio(a) {
+  // BPM + lock state. The show only uses the beat grid when locked, so show it.
+  const bpmEl = document.getElementById('meter-bpm');
+  if (bpmEl) {
+    const locked = (a.confidence || 0) > 0.4;
+    bpmEl.textContent = a.bpm > 0 ? `${Math.round(a.bpm)}${locked ? ' ✓' : ''}` : '—';
+    bpmEl.style.opacity = 0.4 + 0.6 * (a.confidence || 0);
+    bpmEl.style.color = locked ? '#4caf50' : '';
+  }
+
+  // Beat dot: flash when the phase wraps (crosses back toward 0).
+  const beatEl = document.getElementById('meter-beat');
+  if (beatEl) {
+    const phase = a.beat_phase ?? 0;
+    if (a.beat_now || phase < lastBeatPhase) {
+      beatEl.classList.add('hit');
+      setTimeout(() => beatEl.classList.remove('hit'), 90);
+    }
+    lastBeatPhase = phase;
+  }
+
+  // Groove (four-on-the-floor) indicator.
+  const grooveEl = document.getElementById('meter-groove');
+  if (grooveEl) grooveEl.classList.toggle('on', (a.four_on_floor || 0) > 0.45);
+
+  // Live generative tier/palette (~20 Hz, from the engine Director).
+  if (a.live_tier !== undefined) liveTier = a.live_tier;
+  if (a.live_palette !== undefined) livePalette = a.live_palette;
+  if (a.reactive_auto !== undefined) currentReactiveAuto = a.reactive_auto;
+  refreshReactiveLiveIndicators();
+
+  // Energy + intensity readouts (0–100).
+  const enEl = document.getElementById('meter-energy');
+  if (enEl) enEl.textContent = Math.round((a.energy || 0) * 100);
+  const inEl = document.getElementById('meter-intensity');
+  if (inEl) inEl.textContent = Math.round((a.intensity || 0) * 100);
+
+  // Status line: are we actually hearing anything?
+  const statusEl = document.getElementById('reactive-status');
+  if (statusEl) {
+    const live = (a.energy || 0) > 0.02;
+    statusEl.textContent = live ? 'live' : 'silent';
+    statusEl.classList.toggle('live', live);
+  }
 }
 
 // Faders are sent to the backend as continuous values, but rendered in the UI
