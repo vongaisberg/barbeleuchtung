@@ -1,0 +1,107 @@
+name: Build and deploy
+
+on:
+  # main only -- this app has no dev overlay in sun-gitops, so there is no
+  # second environment for a branch to deploy into.
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  # Where CI pushes to: Zot's NodePort on barnet. The runner is outside the
+  # cluster but on the same subnet as the node, so this is a direct hop --
+  # no tailnet round-trip, no ACL grant. Plain HTTP on a private lab network;
+  # Zot still enforces htpasswd auth.
+  PUSH_REGISTRY: 10.90.0.10:30500
+  # What the deployment manifest references: the cluster-internal name, which the
+  # k3s node resolves to Zot's ClusterIP via /etc/rancher/k3s/registries.yaml.
+  IMAGE_REGISTRY: zot.registry.svc.cluster.local:5000
+  IMAGE: barbeleuchtung
+
+jobs:
+  build:
+    runs-on: [self-hosted, sun]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Derive image tags
+        id: meta
+        run: |
+          SHA_TAG="${GITHUB_SHA::7}"
+          echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
+          TAGS="${SHA_TAG}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAGS="${TAGS} ${GITHUB_REF_NAME#v}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "Building tags: ${TAGS}"
+
+      - name: Build image
+        run: DOCKER_BUILDKIT=1 docker build -t "${IMAGE}:${{ steps.meta.outputs.sha_tag }}" .
+
+      # Zot is strict OCI-only and rejects Docker V2 manifests with HTTP 415,
+      # so push via skopeo with --format oci rather than `docker push`.
+      # Uses docker-archive rather than the docker-daemon transport: Debian's
+      # skopeo speaks an API version too old for current Docker daemons.
+      - name: Push to Zot
+        env:
+          ZOT_USER: ${{ secrets.ZOT_USERNAME }}
+          ZOT_PASS: ${{ secrets.ZOT_PASSWORD }}
+          SHA_TAG: ${{ steps.meta.outputs.sha_tag }}
+        run: |
+          ARCHIVE="$(mktemp -d)/image.tar"
+          trap 'rm -rf "$(dirname "$ARCHIVE")"' EXIT
+          docker save "${IMAGE}:${SHA_TAG}" -o "$ARCHIVE"
+
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            echo "Pushing ${PUSH_REGISTRY}/${IMAGE}:${tag}"
+            skopeo copy --format oci \
+              "docker-archive:${ARCHIVE}" \
+              "docker://${PUSH_REGISTRY}/${IMAGE}:${tag}" \
+              --dest-creds "${ZOT_USER}:${ZOT_PASS}" \
+              --dest-tls-verify=false
+          done
+
+      - name: Update image tag in sun-gitops
+        env:
+          GITOPS_SSH_KEY: ${{ secrets.GITOPS_DEPLOY_KEY }}
+          NEW_TAG: ${{ steps.meta.outputs.sha_tag }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$GITOPS_SSH_KEY" > ~/.ssh/gitops_key
+          chmod 600 ~/.ssh/gitops_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/gitops_key -o IdentitiesOnly=yes"
+
+          rm -rf /tmp/sun-gitops
+          git clone git@github.com:vongaisberg/sun-gitops.git /tmp/sun-gitops
+          cd /tmp/sun-gitops
+
+          # Apps are rendered from the shared chart in charts/app, so the image
+          # lives in the app's values file, not in a deployment.yaml.
+          DEPLOY_FILE="apps/${IMAGE}/values.yaml"
+          echo "Updating ${DEPLOY_FILE}"
+          sed -i -E "s|(image: ${IMAGE_REGISTRY}/${IMAGE}):.*|\1:${NEW_TAG}|" "$DEPLOY_FILE"
+
+          # Fail loudly rather than committing nothing if the line ever moves.
+          if ! grep -q "image: ${IMAGE_REGISTRY}/${IMAGE}:${NEW_TAG}" "$DEPLOY_FILE"; then
+            echo "::error::image line not found in ${DEPLOY_FILE}" >&2
+            exit 1
+          fi
+
+          if git diff --quiet; then
+            echo "Image tag already ${NEW_TAG}, nothing to commit."
+            rm -f ~/.ssh/gitops_key
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$DEPLOY_FILE"
+          git commit -m "${IMAGE}: deploy ${NEW_TAG} to ${GITHUB_REF_NAME}" \
+            -m "Built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          git push origin main
+
+          rm -f ~/.ssh/gitops_key
