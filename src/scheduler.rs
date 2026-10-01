@@ -1,4 +1,4 @@
-use chrono::NaiveTime;
+use chrono::{Datelike, NaiveDate, NaiveTime, Weekday};
 
 use crate::state::AppState;
 use crate::theme::{all_fx_themes, all_themes};
@@ -13,6 +13,8 @@ pub struct ScheduleEntry {
     /// If `Some`, set `AppState::fog_enabled` to this value when the entry fires.
     /// Fog is not a fader fixture so it needs its own scheduling channel.
     pub fog_enabled: Option<bool>,
+    /// If `Some`, the entry only fires on dates for which this returns `true`.
+    pub active_on: Option<fn(NaiveDate) -> bool>,
 }
 
 /// Checks whether any schedule entry has been crossed since the last tick and,
@@ -45,6 +47,7 @@ impl Scheduler {
                 fx_theme_id: None,
                 fader_values: None,
                 fog_enabled: None,
+                active_on: None,
             })
             .collect();
         Self::new(entries)
@@ -81,7 +84,13 @@ impl Scheduler {
             return;
         }
 
+        let today = chrono::Local::now().date_naive();
+
         for entry in &self.entries {
+            if entry.active_on.is_some_and(|active| !active(today)) {
+                continue;
+            }
+
             let crossed = if current >= prev {
                 // Normal case: no midnight crossing.
                 entry.time > prev && entry.time <= current
@@ -192,6 +201,7 @@ pub fn complete_schedule() -> Scheduler {
             fx_theme_id: Some(0), // fx_off
             fader_values: Some(all_faders_off.clone()),
             fog_enabled: Some(false),
+            active_on: None,
         },
         // 17:00 – Golden Afternoon transition, The Looking Glass starts
         ScheduleEntry {
@@ -200,6 +210,7 @@ pub fn complete_schedule() -> Scheduler {
             fx_theme_id: Some(1), // fx_looking_glass
             fader_values: None,
             fog_enabled: None,
+            active_on: None,
         },
         // 21:00 – Cheshire Grin starts
         ScheduleEntry {
@@ -208,14 +219,17 @@ pub fn complete_schedule() -> Scheduler {
             fx_theme_id: Some(2), // fx_cheshire_grin
             fader_values: None,
             fog_enabled: None,
+            active_on: None,
         },
-        // 22:00 – Keep current theme, fans on
+        // 22:00 – Keep current theme, fans on (daily in summer, Fridays only
+        //          October–April). The 07:00 entry turns them off every day.
         ScheduleEntry {
             time: NaiveTime::from_hms_opt(22, 0, 0).unwrap(),
             theme_id: None, // keep current theme
             fx_theme_id: None, // fx_cheshire_grin
             fader_values: Some(fans_on.clone()),
             fog_enabled: None,
+            active_on: Some(fans_scheduled_on),
         },
         // 23:00 – White Rabbit starts
         ScheduleEntry {
@@ -224,6 +238,7 @@ pub fn complete_schedule() -> Scheduler {
             fx_theme_id: Some(3), // fx_white_rabbit
             fader_values: None, // Keep fans on
             fog_enabled: None,
+            active_on: None,
         },
 
     ];
@@ -232,6 +247,12 @@ pub fn complete_schedule() -> Scheduler {
     entries.sort_by_key(|e| e.time);
     
     Scheduler::new(entries)
+}
+
+/// Fans run every night May–September, but only on Fridays October–April.
+fn fans_scheduled_on(date: NaiveDate) -> bool {
+    let winter = !(5..=9).contains(&date.month());
+    !winter || date.weekday() == Weekday::Fri
 }
 
 /// FX theme id the standard bar schedule dictates *right now* (local time).
